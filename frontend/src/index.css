@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  /* Design tokens from UX design §8 */
+  --color-primary: #1E3A5F;
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: #3B82F6;
+  --color-accent-foreground: #FFFFFF;
+  --color-success: #10B981;
+  --color-success-foreground: #FFFFFF;
+  --color-warning: #F59E0B;
+  --color-warning-foreground: #000000;
+  --color-destructive: #EF4444;
+  --color-destructive-foreground: #FFFFFF;
+  --color-background: #F8FAFC;
+  --color-card: #FFFFFF;
+  --color-border: #E2E8F0;
+  --color-foreground: #1E293B;
+  --color-muted-foreground: #64748B;
+
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Amount fields use monospace font */
+.amount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shadcn-style utilities */
+@layer utilities {
+  .border-border {
+    border-color: var(--color-border);
+  }
+}
