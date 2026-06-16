@@ -10,14 +10,18 @@ GET           /admin/params        — system parameters
 PUT           /admin/params        — update parameters
 """
 
+import math
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, hash_password, require_permission, require_role
-from app.models.user import User
+from app.models.user import Role, User
 from app.schemas.common import PaginatedResponse
 from app.schemas.period import (
     AuditLogFilter,
@@ -42,18 +46,67 @@ router = APIRouter()
 async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    is_enabled: bool = Query(None),
+    is_enabled: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: bool = Depends(require_permission("admin:users")),
 ) -> PaginatedResponse[UserResponse]:
     """List all users (admin only)."""
-    raise NotImplementedError(
-        "list_users:\n"
-        "1. SELECT users JOIN roles\n"
-        "2. Optional is_enabled filter\n"
-        "3. Paginate\n"
-        "4. Return UserResponse items with role_name"
+    query = (
+        select(User)
+        .options(selectinload(User.role))
+        .order_by(User.created_at.desc())
+    )
+
+    if is_enabled is not None:
+        query = query.where(User.is_enabled == is_enabled)
+
+    count_query = select(func.count()).select_from(User)
+    if is_enabled is not None:
+        count_query = count_query.where(User.is_enabled == is_enabled)
+
+    total_result = await db.execute(count_query)
+    total: int = total_result.scalar_one()
+
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    users = result.scalars().all()
+
+    items = [
+        UserResponse(
+            id=u.id,
+            username=u.username,
+            display_name=u.display_name,
+            role_id=u.role_id,
+            role_name=u.role.name if u.role else None,
+            is_enabled=u.is_enabled,
+            last_login_at=u.last_login_at,
+            created_at=u.created_at,
+            updated_at=u.updated_at,
+        )
+        for u in users
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=math.ceil(total / page_size) if total > 0 else 1,
+    )
+
+
+def _user_to_response(u: User) -> UserResponse:
+    return UserResponse(
+        id=u.id,
+        username=u.username,
+        display_name=u.display_name,
+        role_id=u.role_id,
+        role_name=u.role.name if u.role else None,
+        is_enabled=u.is_enabled,
+        last_login_at=u.last_login_at,
+        created_at=u.created_at,
+        updated_at=u.updated_at,
     )
 
 
@@ -68,14 +121,41 @@ async def create_user(
 
     Hashes password with bcrypt, assigns role.
     """
-    raise NotImplementedError(
-        "create_user:\n"
-        "1. Check username uniqueness → 409 if exists\n"
-        "2. Verify role_id exists → 404 if not\n"
-        "3. password_hash = hash_password(body.password)  # bcrypt cost 12\n"
-        "4. Create User(username, password_hash, display_name, role_id, is_enabled)\n"
-        "5. Return UserResponse"
+    # 1. Check username uniqueness
+    existing = await db.execute(select(User).where(User.username == body.username))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"用户名 '{body.username}' 已存在",
+        )
+
+    # 2. Verify role_id exists
+    role_result = await db.execute(select(Role).where(Role.id == body.role_id))
+    role = role_result.scalar_one_or_none()
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"角色不存在",
+        )
+
+    # 3. Hash password and create user
+    user = User(
+        username=body.username,
+        password_hash=hash_password(body.password),
+        display_name=body.display_name,
+        role_id=body.role_id,
+        is_enabled=body.is_enabled,
     )
+    db.add(user)
+    await db.flush()
+
+    # Reload with role relationship
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+
+    return _user_to_response(user)
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
@@ -87,13 +167,40 @@ async def update_user(
     _: bool = Depends(require_permission("admin:users")),
 ) -> UserResponse:
     """Update user details (admin only)."""
-    raise NotImplementedError(
-        "update_user:\n"
-        "1. Get user by ID (404 if missing)\n"
-        "2. Patch non-None fields from body\n"
-        "3. If password provided: re-hash\n"
-        "4. Return updated user"
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user_id)
     )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    if body.display_name is not None:
+        user.display_name = body.display_name
+    if body.role_id is not None:
+        role_result = await db.execute(select(Role).where(Role.id == body.role_id))
+        if not role_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="角色不存在",
+            )
+        user.role_id = body.role_id
+    if body.is_enabled is not None:
+        user.is_enabled = body.is_enabled
+    if body.password is not None:
+        user.password_hash = hash_password(body.password)
+
+    await db.flush()
+
+    # Reload with role relationship
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+
+    return _user_to_response(user)
 
 
 @router.delete("/users/{user_id}")
@@ -107,13 +214,25 @@ async def delete_user(
 
     Cannot delete self.
     """
-    raise NotImplementedError(
-        "delete_user:\n"
-        "1. Prevent self-deletion → 400\n"
-        "2. Get user by ID → 404\n"
-        "3. Deactivate (is_enabled=False) or hard delete\n"
-        "4. return {message: 'User deleted'}"
-    )
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能删除自己的账号",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    # Soft-delete: disable the user instead of removing from DB
+    user.is_enabled = False
+    await db.flush()
+
+    return {"message": "用户已删除"}
 
 
 # ── Role Management ───────────────────────────────────────────
@@ -126,11 +245,17 @@ async def list_roles(
     _: bool = Depends(require_permission("admin:roles")),
 ) -> list[RoleSchema]:
     """List all roles with permissions."""
-    raise NotImplementedError(
-        "list_roles:\n"
-        "1. SELECT * FROM roles ORDER BY name\n"
-        "2. Return list of RoleSchema"
-    )
+    result = await db.execute(select(Role).order_by(Role.name))
+    roles = result.scalars().all()
+
+    return [
+        RoleSchema(
+            id=r.id,
+            name=r.name,
+            permissions=r.permissions or {},
+        )
+        for r in roles
+    ]
 
 
 @router.post("/roles", response_model=RoleSchema, status_code=201)
@@ -141,11 +266,25 @@ async def create_role(
     _: bool = Depends(require_permission("admin:roles")),
 ) -> RoleSchema:
     """Create a new role with permission map."""
-    raise NotImplementedError(
-        "create_role:\n"
-        "1. Check name uniqueness\n"
-        "2. Create Role(name, permissions=JSONB)\n"
-        "3. Return RoleSchema"
+    # Check name uniqueness
+    existing = await db.execute(select(Role).where(Role.name == body.name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"角色名称 '{body.name}' 已存在",
+        )
+
+    role = Role(
+        name=body.name,
+        permissions=body.permissions,
+    )
+    db.add(role)
+    await db.flush()
+
+    return RoleSchema(
+        id=role.id,
+        name=role.name,
+        permissions=role.permissions or {},
     )
 
 

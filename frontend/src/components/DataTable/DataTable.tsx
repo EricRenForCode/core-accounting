@@ -34,7 +34,7 @@ interface DataTableProps<T> {
   emptyMessage?: string
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends { id?: unknown }>({
   columns,
   data,
   isLoading,
@@ -44,7 +44,7 @@ export function DataTable<T extends Record<string, unknown>>({
   selectable,
   selectedRows = [],
   onSelectionChange,
-  getId = (row) => (row.id as string) || '',
+  getId = (row) => (String(row.id)) || '',
   sort,
   sortOrder,
   onSortChange,
