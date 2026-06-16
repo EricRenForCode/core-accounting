@@ -1,5 +1,7 @@
 import { createRootRoute, createRoute } from '@tanstack/react-router'
 import { AppShell } from '@/components/layout/AppShell'
+import UsersPage from '@/features/admin/UsersPage'
+import RolesPage from '@/features/admin/RolesPage'
 
 // ─── Placeholder pages ──────────────────────────────
 
@@ -300,13 +302,13 @@ const adminAccountsRoute = createRoute({
 const adminUsersRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/users',
-  component: () => <PlaceholderPage title="用户管理" />,
+  component: UsersPage,
 })
 
 const adminRolesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/roles',
-  component: () => <PlaceholderPage title="权限管理" />,
+  component: RolesPage,
 })
 
 const adminPeriodsRoute = createRoute({

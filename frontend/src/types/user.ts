@@ -5,11 +5,12 @@ export interface User {
   username: string
   display_name: string
   role_id: string
-  role_name: string
-  permissions: Permission[]
+  role_name?: string
   is_enabled: boolean
   last_login_at?: string
   created_at: string
+  updated_at: string
+  [key: string]: unknown
 }
 
 export interface CreateUserRequest {
@@ -29,8 +30,7 @@ export interface UpdateUserRequest {
 export interface RoleInfo {
   id: string
   name: Role
-  permissions: Permission[]
-  created_at: string
+  permissions: Record<string, boolean>
 }
 
 export interface AuditLog {
