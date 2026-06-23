@@ -152,6 +152,38 @@ class QuantityLedgerResponse(BaseModel):
     closing_amount: Decimal
 
 
+# ── Multi-Column Ledger (§3.6) ─────────────────────────────────
+
+
+class MultiColumnLedgerColumn(BaseModel):
+    """Dynamic column in multi-column ledger (对方科目)."""
+
+    account_code: str
+    account_name: str
+
+
+class MultiColumnLedgerRow(BaseModel):
+    """Row in multi-column ledger."""
+
+    date: date
+    voucher_no: str
+    summary: str
+    column_values: dict  # {account_code: {"debit": ..., "credit": ...}}
+    total_debit: Decimal
+    total_credit: Decimal
+
+
+class MultiColumnLedgerResponse(BaseModel):
+    """GET /reports/multi-column-ledger/{account_id} response."""
+
+    period: dict
+    account: dict
+    columns: List[MultiColumnLedgerColumn]
+    rows: List[MultiColumnLedgerRow]
+    total_debit: Decimal
+    total_credit: Decimal
+
+
 # ── Financial Statements (§3.7) ───────────────────────────────
 
 

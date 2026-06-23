@@ -1,7 +1,7 @@
 """User, Role, and RefreshToken models — §2.10, §2.11"""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import (
     Boolean,
@@ -103,7 +103,7 @@ class RefreshToken(Base, UUIDPrimaryKeyMixin):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 

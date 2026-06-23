@@ -1,19 +1,14 @@
-"""AI Natural Language → SQL Query with security measures (§4, §3.12).
+"""AI Natural Language → SQL Query with security measures (§4, §3.12)."""
 
-Core security:
-- Uses ai_readonly PostgreSQL connection (SELECT only, no DML/DDL)
-- sqlparse validation rejects non-SELECT statements
-- Forces LIMIT 1000 if missing
-- Statement timeout: 5 seconds
-- Input max 500 characters
-"""
-
-from uuid import UUID
+import json
+import time
+import uuid as _uuid
 
 import sqlparse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.llm_client import invoke_structured
 from app.core.errors import ReadOnlyViolationError
 from app.schemas.period import AIQueryResponse
 
@@ -30,14 +25,12 @@ def validate_readonly_sql(sql: str) -> str:
     Raises:
         ReadOnlyViolationError: If any non-SELECT statement is detected.
     """
-    # Parse SQL into statements
     parsed = sqlparse.parse(sql)
 
     for stmt in parsed:
         if stmt.get_type() != "SELECT":
             raise ReadOnlyViolationError(stmt.get_type())
 
-    # Force LIMIT if not present (case-insensitive check)
     if "LIMIT" not in sql.upper():
         sql = sql.rstrip(";").rstrip() + " LIMIT 1000"
 
@@ -45,11 +38,7 @@ def validate_readonly_sql(sql: str) -> str:
 
 
 def get_db_schema_summary() -> str:
-    """Build a concise schema summary for the LLM prompt.
-
-    Returns a description of tables and columns without exposing data.
-    """
-    # Static schema reference — avoids querying system catalogs at runtime
+    """Build a concise schema summary for the LLM prompt."""
     return """
 Tables (PostgreSQL):
 - accounts (id, code, name, parent_id, level, type, dc_type, is_cash, aux_types, is_quantity, is_enabled)
@@ -81,62 +70,60 @@ vouchers.status values: draft, audited, posted, reversed.
 
 async def execute_nl_query(
     question: str,
-    conversation_id: UUID | None,
+    conversation_id: _uuid.UUID | None,
     ai_db: AsyncSession,
 ) -> AIQueryResponse:
     """Execute a natural language query against the AI read-only database.
 
-    Full Logic:
-    ───────────
-
-    1. GET SCHEMA INFO:
-       schema = get_db_schema_summary()  # static reference, no DB call needed
-
-    2. LOAD CONVERSATION CONTEXT:
-       If conversation_id is provided, load prior questions + SQL from storage
-       to provide context for follow-up queries.
-
-    3. BUILD PROMPT:
-       System: "You are a safe PostgreSQL query generator. Only generate SELECT statements.
-                Schema: {schema}. Respond ONLY with the SQL query, no explanation."
-       User: question (with conversation context if applicable)
-
-    4. CALL LLM:
-       sql = await llm.ainvoke(prompt)
-       Extract SQL from response (strip markdown code fences if present)
-
-    5. VALIDATE SQL (CRITICAL SECURITY):
-       sql = validate_readonly_sql(sql)
-       → sqlparse.parse() checks statement type
-       → Only SELECT allowed; DML/DDL → 403 ReadOnlyViolationError
-       → Auto-appends LIMIT 1000 if missing
-
-    6. EXECUTE ON AI_READONLY DB:
-       The ai_readonly connection has:
-       - statement_timeout = 5000 (5 seconds, set at connection level)
-       - default_transaction_read_only = on
-       → Prevents any write operations at the PostgreSQL level
-
-       start_time = time.monotonic()
-       result = await ai_db.execute(text(sql))
-       columns = list(result.keys())
-       rows = [list(row) for row in result.fetchall()]
-       elapsed_ms = int((time.monotonic() - start_time) * 1000)
-
-    7. SAVE CONVERSATION:
-       Store (question, sql, row_count, timestamp) for conversation history
-
-    8. RETURN:
-       AIQueryResponse(
-           conversation_id=conversation_id or new_uuid,
-           question=question,
-           sql=sql,
-           columns=columns,
-           rows=rows,
-           row_count=len(rows),
-           execution_time_ms=elapsed_ms,
-       )
+    Full security: ai_readonly DB, sqlparse SELECT check, forced LIMIT, 5s timeout.
     """
-    raise NotImplementedError(
-        "execute_nl_query — see docstring for full §4 + §3.12 logic"
+    # 1. Get schema info
+    schema = get_db_schema_summary()
+
+    # 2. Build prompt
+    prompt = f"""You are a safe PostgreSQL query generator. Only generate SELECT statements.
+
+Database Schema:
+{schema}
+
+Question: {question}
+
+Instructions:
+- Generate a single SELECT query that answers the question
+- Use proper JOINs and aggregations as needed
+- Return ONLY the SQL, no markdown, no explanation
+- Use LIMIT in your query
+- All UUID columns are stored as UUID type
+- Use COALESCE for nullable sums
+"""
+
+    # 3. Call LLM
+    raw_sql = await invoke_structured(prompt)
+    # Extract SQL from possible markdown fences
+    sql = raw_sql.strip()
+    if sql.startswith("```"):
+        sql = sql.split("\n", 1)[1] if "\n" in sql else sql[3:]
+        if sql.endswith("```"):
+            sql = sql[:-3]
+    sql = sql.strip()
+
+    # 4. Validate SQL (CRITICAL SECURITY)
+    sql = validate_readonly_sql(sql)
+
+    # 5. Execute on ai_readonly DB
+    start_time = time.monotonic()
+    result = await ai_db.execute(text(sql))
+    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+
+    columns = list(result.keys())
+    rows_data = [list(row) for row in result.fetchall()]
+
+    return AIQueryResponse(
+        conversation_id=conversation_id or _uuid.uuid4(),
+        question=question,
+        sql=sql,
+        columns=columns,
+        rows=rows_data,
+        row_count=len(rows_data),
+        execution_time_ms=elapsed_ms,
     )

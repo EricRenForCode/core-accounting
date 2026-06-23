@@ -1,7 +1,7 @@
 """Cash and Bank Journal models — §2.13"""
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy import (
@@ -46,7 +46,7 @@ class CashJournal(Base, UUIDPrimaryKeyMixin):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -83,7 +83,7 @@ class BankJournal(Base, UUIDPrimaryKeyMixin):
     counterparty: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 

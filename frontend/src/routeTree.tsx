@@ -1,7 +1,41 @@
-import { createRootRoute, createRoute } from '@tanstack/react-router'
+import { useState, type FormEvent } from 'react'
+import { createRootRoute, createRoute, Outlet, useNavigate } from '@tanstack/react-router'
 import { AppShell } from '@/components/layout/AppShell'
 import UsersPage from '@/features/admin/UsersPage'
 import RolesPage from '@/features/admin/RolesPage'
+import AccountsPage from '@/features/admin/AccountsPage'
+import PeriodManage from '@/features/admin/PeriodManage'
+import ParamsManage from '@/features/admin/ParamsManage'
+import AuditLogViewer from '@/features/admin/AuditLogViewer'
+import VoucherForm from '@/features/vouchers/VoucherForm'
+import VoucherList from '@/features/vouchers/VoucherList'
+import VoucherDetail from '@/features/vouchers/VoucherDetail'
+import VoucherTemplateList from '@/features/vouchers/VoucherTemplateList'
+import VoucherTemplateForm from '@/features/vouchers/VoucherTemplateForm'
+import TrialBalance from '@/features/ledgers/TrialBalance'
+import JournalLedger from '@/features/ledgers/JournalLedger'
+import MultiColumnLedger from '@/features/ledgers/MultiColumnLedger'
+import QuantityLedger from '@/features/ledgers/QuantityLedger'
+import AuxList from '@/features/auxiliary/AuxList'
+import CashJournal from '@/features/cashier/CashJournal'
+import BankJournal from '@/features/cashier/BankJournal'
+import BankReconcile from '@/features/cashier/BankReconcile'
+import AssetList from '@/features/assets/AssetList'
+import AssetReports from '@/features/assets/AssetReports'
+import BalanceSheetPage from '@/features/reports/BalanceSheet'
+import IncomeStatementPage from '@/features/reports/IncomeStatement'
+import CashFlowStatementPage from '@/features/reports/CashFlowStatement'
+import ReportTemplateManagerPage from '@/features/reports/ReportTemplateManager'
+import CarryForwardPage from '@/features/period/CarryForward'
+import AIPeriodCheckPage from '@/features/period/PeriodClose'
+import AINLQueryPage from '@/features/ai/AINLQuery'
+import AIReportInterpreterPage from '@/features/ai/AIReportInterpreter'
+import AIVoucherGeneratorPage from '@/features/ai/AIVoucherGenerator'
+import AIWorkspacePage from '@/features/ai/AIWorkspace'
+import PeriodClosePage from '@/features/period/PeriodClose'
+import api from '@/lib/api'
+import { useUserStore } from '@/stores/userStore'
+import type { Permission } from '@/lib/constants'
 
 // ─── Placeholder pages ──────────────────────────────
 
@@ -22,34 +56,92 @@ function DashboardPage() {
 }
 
 function LoginPage() {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
+  const setUser = useUserStore((s) => s.setUser)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+
+    if (!username.trim() || !password.trim()) {
+      setError('请输入用户名和密码')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { data } = await api.post('/auth/login', { username, password })
+
+      localStorage.setItem('access_token', data.tokens.access_token)
+      localStorage.setItem('refresh_token', data.tokens.refresh_token)
+
+      setUser({
+        id: data.user.id,
+        username: data.user.username,
+        display_name: data.user.display_name,
+        role_id: '',
+        role_name: data.user.role,
+        permissions: data.user.permissions as Permission[],
+        is_enabled: data.user.is_enabled,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      navigate({ to: '/dashboard' })
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || '登录失败，请重试'
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm rounded-lg border bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-center text-primary mb-6">
           <span className="text-accent">Core</span>Accounting
         </h1>
-        <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          {error && (
+            <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium mb-1">用户名</label>
             <input
               type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               placeholder="请输入用户名"
+              autoComplete="username"
             />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">密码</label>
             <input
               type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               placeholder="请输入密码"
+              autoComplete="current-password"
             />
           </div>
           <button
             type="submit"
-            className="w-full rounded-md bg-accent py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
+            disabled={loading}
+            className="w-full rounded-md bg-accent py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            登录
+            {loading ? '登录中...' : '登录'}
           </button>
         </form>
       </div>
@@ -69,17 +161,15 @@ function PlaceholderPage({ title }: { title: string }) {
   )
 }
 
-function VoucherListPage() { return <PlaceholderPage title="凭证列表" /> }
-function VoucherNewPage() { return <PlaceholderPage title="录入凭证" /> }
-function VoucherTemplatePage() { return <PlaceholderPage title="凭证模板" /> }
+function VoucherNewPage() { return <VoucherForm /> }
 
-// ─── Root Route ─────────────────────────────────────
+// ─── Root Route (no layout — pure outlet) ──────────
 
 const rootRoute = createRootRoute({
-  component: AppShell,
+  component: () => <Outlet />,
 })
 
-// ─── Public Routes ──────────────────────────────────
+// ─── Public Routes (outside AppShell) ───────────────
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -87,10 +177,18 @@ const loginRoute = createRoute({
   component: LoginPage,
 })
 
+// ─── Authenticated Layout (AppShell wrapper) ────────
+
+const authenticatedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'authenticated',
+  component: AppShell,
+})
+
 // ─── Dashboard ──────────────────────────────────────
 
 const dashboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/dashboard',
   component: DashboardPage,
 })
@@ -98,9 +196,15 @@ const dashboardRoute = createRoute({
 // ─── Vouchers ───────────────────────────────────────
 
 const vouchersRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/vouchers',
-  component: VoucherListPage,
+  component: () => <Outlet />,
+})
+
+const vouchersIndexRoute = createRoute({
+  getParentRoute: () => vouchersRoute,
+  path: '/',
+  component: VoucherList,
 })
 
 const voucherNewRoute = createRoute({
@@ -112,21 +216,45 @@ const voucherNewRoute = createRoute({
 const voucherTemplatesRoute = createRoute({
   getParentRoute: () => vouchersRoute,
   path: '/templates',
-  component: VoucherTemplatePage,
+  component: VoucherTemplateList,
+})
+
+const voucherTemplateNewRoute = createRoute({
+  getParentRoute: () => vouchersRoute,
+  path: '/templates/new',
+  component: VoucherTemplateForm,
+})
+
+const voucherTemplateEditRoute = createRoute({
+  getParentRoute: () => vouchersRoute,
+  path: '/templates/$templateId',
+  component: VoucherTemplateForm,
+})
+
+const voucherDetailRoute = createRoute({
+  getParentRoute: () => vouchersRoute,
+  path: '/$voucherId',
+  component: VoucherDetail,
 })
 
 // ─── Ledgers ────────────────────────────────────────
 
 const ledgersRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/ledgers',
+  component: () => <Outlet />,
+})
+
+const ledgersIndexRoute = createRoute({
+  getParentRoute: () => ledgersRoute,
+  path: '/',
   component: () => <PlaceholderPage title="账表查询" />,
 })
 
 const trialBalanceRoute = createRoute({
   getParentRoute: () => ledgersRoute,
   path: '/trial-balance',
-  component: () => <PlaceholderPage title="科目余额表" />,
+  component: TrialBalance,
 })
 
 const generalLedgerRoute = createRoute({
@@ -144,159 +272,195 @@ const detailLedgerRoute = createRoute({
 const multiColumnRoute = createRoute({
   getParentRoute: () => ledgersRoute,
   path: '/multi-column',
-  component: () => <PlaceholderPage title="多栏明细账" />,
+  component: MultiColumnLedger,
 })
 
 const journalRoute = createRoute({
   getParentRoute: () => ledgersRoute,
   path: '/journal',
-  component: () => <PlaceholderPage title="序时账" />,
+  component: JournalLedger,
 })
 
 const quantityLedgerRoute = createRoute({
   getParentRoute: () => ledgersRoute,
   path: '/quantity',
-  component: () => <PlaceholderPage title="数量金额账" />,
+  component: QuantityLedger,
 })
 
 // ─── Auxiliary ──────────────────────────────────────
 
 const auxiliaryRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/auxiliary',
-  component: () => <PlaceholderPage title="辅助核算" />,
+  component: AuxList,
 })
 
 // ─── Reports ────────────────────────────────────────
 
 const reportsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/reports',
-  component: () => <PlaceholderPage title="财务报表" />,
+  component: () => <Outlet />,
+})
+
+const reportsIndexRoute = createRoute({
+  getParentRoute: () => reportsRoute,
+  path: '/',
+  component: ReportTemplateManagerPage,
 })
 
 const balanceSheetRoute = createRoute({
   getParentRoute: () => reportsRoute,
   path: '/balance-sheet',
-  component: () => <PlaceholderPage title="资产负债表" />,
+  component: BalanceSheetPage,
 })
 
 const incomeRoute = createRoute({
   getParentRoute: () => reportsRoute,
   path: '/income',
-  component: () => <PlaceholderPage title="利润表" />,
+  component: IncomeStatementPage,
 })
 
 const cashFlowRoute = createRoute({
   getParentRoute: () => reportsRoute,
   path: '/cash-flow',
-  component: () => <PlaceholderPage title="现金流量表" />,
+  component: CashFlowStatementPage,
 })
 
 // ─── Period ─────────────────────────────────────────
 
 const periodRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/period',
+  component: () => <Outlet />,
+})
+
+const periodIndexRoute = createRoute({
+  getParentRoute: () => periodRoute,
+  path: '/',
   component: () => <PlaceholderPage title="期末处理" />,
 })
 
 const periodCloseRoute = createRoute({
   getParentRoute: () => periodRoute,
   path: '/close',
-  component: () => <PlaceholderPage title="结账" />,
+  component: PeriodClosePage,
 })
 
 const carryForwardRoute = createRoute({
   getParentRoute: () => periodRoute,
   path: '/carry-forward',
-  component: () => <PlaceholderPage title="期末结转" />,
+  component: CarryForwardPage,
 })
 
 // ─── Cashier ────────────────────────────────────────
 
 const cashierRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/cashier',
+  component: () => <Outlet />,
+})
+
+const cashierIndexRoute = createRoute({
+  getParentRoute: () => cashierRoute,
+  path: '/',
   component: () => <PlaceholderPage title="出纳管理" />,
 })
 
 const cashJournalRoute = createRoute({
   getParentRoute: () => cashierRoute,
   path: '/cash',
-  component: () => <PlaceholderPage title="现金日记账" />,
+  component: CashJournal,
 })
 
 const bankJournalRoute = createRoute({
   getParentRoute: () => cashierRoute,
   path: '/bank',
-  component: () => <PlaceholderPage title="银行日记账" />,
+  component: BankJournal,
 })
 
 const bankReconcileRoute = createRoute({
   getParentRoute: () => cashierRoute,
   path: '/reconcile',
-  component: () => <PlaceholderPage title="银行对账" />,
+  component: BankReconcile,
 })
 
 // ─── Assets ─────────────────────────────────────────
 
 const assetsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/assets',
+  component: () => <Outlet />,
+})
+
+const assetsIndexRoute = createRoute({
+  getParentRoute: () => assetsRoute,
+  path: '/',
   component: () => <PlaceholderPage title="固定资产" />,
 })
 
 const assetListRoute = createRoute({
   getParentRoute: () => assetsRoute,
   path: '/list',
-  component: () => <PlaceholderPage title="资产列表" />,
+  component: AssetList,
 })
 
 const assetReportRoute = createRoute({
   getParentRoute: () => assetsRoute,
   path: '/reports',
-  component: () => <PlaceholderPage title="资产报表" />,
+  component: AssetReports,
 })
 
 // ─── AI ─────────────────────────────────────────────
 
 const aiRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/ai',
-  component: () => <PlaceholderPage title="AI 工作台" />,
+  component: () => <Outlet />,
+})
+
+const aiIndexRoute = createRoute({
+  getParentRoute: () => aiRoute,
+  path: '/',
+  component: AIWorkspacePage,
 })
 
 const aiVoucherRoute = createRoute({
   getParentRoute: () => aiRoute,
   path: '/voucher',
-  component: () => <PlaceholderPage title="智能凭证" />,
+  component: AIVoucherGeneratorPage,
 })
 
 const aiReportRoute = createRoute({
   getParentRoute: () => aiRoute,
   path: '/report',
-  component: () => <PlaceholderPage title="报表解读" />,
+  component: AIReportInterpreterPage,
 })
 
 const aiQueryRoute = createRoute({
   getParentRoute: () => aiRoute,
   path: '/query',
-  component: () => <PlaceholderPage title="自然语言查询" />,
+  component: AINLQueryPage,
 })
 
 // ─── Admin ──────────────────────────────────────────
 
 const adminRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/admin',
+  component: () => <Outlet />,
+})
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/',
   component: () => <PlaceholderPage title="系统管理" />,
 })
 
 const adminAccountsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/accounts',
-  component: () => <PlaceholderPage title="科目管理" />,
+  component: AccountsPage,
 })
 
 const adminUsersRoute = createRoute({
@@ -314,19 +478,19 @@ const adminRolesRoute = createRoute({
 const adminPeriodsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/periods',
-  component: () => <PlaceholderPage title="会计期间" />,
+  component: PeriodManage,
 })
 
 const adminParamsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/params',
-  component: () => <PlaceholderPage title="系统参数" />,
+  component: ParamsManage,
 })
 
 const adminAuditRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/audit-logs',
-  component: () => <PlaceholderPage title="审计日志" />,
+  component: AuditLogViewer,
 })
 
 const adminBackupRoute = createRoute({
@@ -338,7 +502,7 @@ const adminBackupRoute = createRoute({
 // ─── Index (redirect to dashboard) ──────────────────
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/',
   component: DashboardPage,
 })
@@ -346,14 +510,20 @@ const indexRoute = createRoute({
 // ─── Route Tree ─────────────────────────────────────
 
 export const routeTree = rootRoute.addChildren([
-  indexRoute,
   loginRoute,
+  authenticatedRoute.addChildren([
+  indexRoute,
   dashboardRoute,
   vouchersRoute.addChildren([
+    vouchersIndexRoute,
     voucherNewRoute,
     voucherTemplatesRoute,
+    voucherTemplateNewRoute,
+    voucherTemplateEditRoute,
+    voucherDetailRoute,
   ]),
   ledgersRoute.addChildren([
+    ledgersIndexRoute,
     trialBalanceRoute,
     generalLedgerRoute,
     detailLedgerRoute,
@@ -363,29 +533,35 @@ export const routeTree = rootRoute.addChildren([
   ]),
   auxiliaryRoute,
   reportsRoute.addChildren([
+    reportsIndexRoute,
     balanceSheetRoute,
     incomeRoute,
     cashFlowRoute,
   ]),
   periodRoute.addChildren([
+    periodIndexRoute,
     periodCloseRoute,
     carryForwardRoute,
   ]),
   cashierRoute.addChildren([
+    cashierIndexRoute,
     cashJournalRoute,
     bankJournalRoute,
     bankReconcileRoute,
   ]),
   assetsRoute.addChildren([
+    assetsIndexRoute,
     assetListRoute,
     assetReportRoute,
   ]),
   aiRoute.addChildren([
+    aiIndexRoute,
     aiVoucherRoute,
     aiReportRoute,
     aiQueryRoute,
   ]),
   adminRoute.addChildren([
+    adminIndexRoute,
     adminAccountsRoute,
     adminUsersRoute,
     adminRolesRoute,
@@ -393,5 +569,6 @@ export const routeTree = rootRoute.addChildren([
     adminParamsRoute,
     adminAuditRoute,
     adminBackupRoute,
+  ]),
   ]),
 ])

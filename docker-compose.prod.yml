@@ -1,0 +1,122 @@
+# Core Accounting — Docker Compose (Production)
+# Usage:
+#   cp backend/.env.example backend/.env.prod
+#   # Edit backend/.env.prod with real secrets
+#   docker compose -f docker-compose.prod.yml up -d
+
+version: "3.9"
+
+services:
+  # ── PostgreSQL 15 (Production) ─────────────────────────
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-accounting}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?required}
+      POSTGRES_DB: ${DB_NAME:-core_accounting}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-accounting} -d ${DB_NAME:-core_accounting}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ── Redis 7 (Production) ───────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── Backend (FastAPI Production) ────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
+      - AI_READONLY_DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=false
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/v1/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Celery Worker (Production) ─────────────────────────
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=false
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks worker --loglevel=warning --concurrency=4
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── Nginx Reverse Proxy ────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,7 +1,7 @@
 """Audit log model — §2.12"""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import (
     BigInteger,
@@ -47,7 +47,7 @@ class AuditLog(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 

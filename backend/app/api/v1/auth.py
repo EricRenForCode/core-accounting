@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import Settings
 from app.core.database import get_db
@@ -59,7 +60,7 @@ async def login(
     7. Update user.last_login_at
     """
     result = await db.execute(
-        select(User).where(User.username == body.username)
+        select(User).options(selectinload(User.role)).where(User.username == body.username)
     )
     user = result.scalar_one_or_none()
 
@@ -147,7 +148,7 @@ async def refresh(
 
     user_id = payload.get("sub")
     result = await db.execute(
-        select(User).where(User.id == user_id)
+        select(User).options(selectinload(User.role)).where(User.id == user_id)
     )
     user = result.scalar_one_or_none()
 
@@ -210,7 +211,7 @@ async def get_me(
         raise HTTPException(status_code=401, detail="Invalid access token")
 
     result = await db.execute(
-        select(User).where(User.id == payload["sub"])
+        select(User).options(selectinload(User.role)).where(User.id == payload["sub"])
     )
     user = result.scalar_one_or_none()
 

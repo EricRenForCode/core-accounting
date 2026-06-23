@@ -72,6 +72,15 @@ const menuItems: MenuItem[] = [
     to: '/admin',
     icon: <Settings size={20} />,
     permission: 'admin:users',
+    children: [
+      { label: '用户管理', to: '/admin/users', icon: <span /> },
+      { label: '角色管理', to: '/admin/roles', icon: <span /> },
+      { label: '科目管理', to: '/admin/accounts', icon: <span /> },
+      { label: '会计期间', to: '/admin/periods', icon: <span /> },
+      { label: '系统参数', to: '/admin/params', icon: <span /> },
+      { label: '审计日志', to: '/admin/audit-logs', icon: <span /> },
+      { label: '数据备份', to: '/admin/backup', icon: <span /> },
+    ],
   },
 ]
 
@@ -80,7 +89,7 @@ export function Sidebar() {
   const { isAdmin } = usePermission()
   const location = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['凭证管理', '账表查询', '财务报表']))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['凭证管理', '账表查询', '财务报表', '系统管理']))
 
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) => {

@@ -62,10 +62,25 @@ async def invoke_structured(prompt: str, max_retries: int = 2) -> str:
     Raises:
         AIGenerationFailedError: If all retries fail.
     """
-    raise NotImplementedError(
-        "invoke_structured:\n"
-        "1. Call llm.ainvoke(prompt) with response_format={'type': 'json_object'}\n"
-        "2. If timeout/error: retry with fallback model\n"
-        "3. If all retries exhausted: raise AIGenerationFailedError\n"
-        "4. Return response.content"
+    from app.core.errors import AIGenerationFailedError
+
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            client = get_llm() if attempt == 0 else get_llm_fallback()
+            # Use JSON mode via model_kwargs for OpenAI-compatible APIs
+            response = await client.ainvoke(
+                prompt,
+                response_format={"type": "json_object"},
+            )
+            return response.content
+        except Exception as e:
+            last_error = str(e)
+            if attempt < max_retries:
+                import asyncio
+                await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+
+    raise AIGenerationFailedError(
+        f"LLM generation failed after {max_retries + 1} attempts: {last_error}"
     )

@@ -10,6 +10,13 @@ from uuid import UUID
 # ── Period Schemas (§3.8) ─────────────────────────────────────
 
 
+class PeriodCreate(BaseModel):
+    """POST /periods request body."""
+
+    year: int = Field(..., ge=2000, le=2100)
+    month: int = Field(..., ge=1, le=12)
+
+
 class PeriodSchema(BaseModel):
     """会计期间 representation."""
 
@@ -315,6 +322,7 @@ class AuditLogResponse(BaseModel):
 
     id: int
     user_id: Optional[UUID] = None
+    username: Optional[str] = None
     action: str
     resource_type: str
     resource_id: Optional[UUID] = None

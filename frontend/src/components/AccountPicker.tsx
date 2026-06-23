@@ -4,9 +4,16 @@ import api from '@/lib/api'
 import type { AccountTreeNode } from '@/types/account'
 import { cn } from '@/lib/utils'
 
+export interface SelectedAccount {
+  id: string
+  code: string
+  name: string
+  aux_types: string[]
+}
+
 interface AccountPickerProps {
   value?: string
-  onChange: (account: { id: string; code: string; name: string }) => void
+  onChange: (account: SelectedAccount) => void
   disabled?: boolean
   excludeIds?: string[]
   filter?: (account: AccountTreeNode) => boolean
@@ -107,7 +114,7 @@ export function AccountPicker({
           )}
           style={{ paddingLeft: `${8 + indent}px` }}
           onClick={() => {
-            onChange({ id: node.id, code: node.code, name: node.name })
+            onChange({ id: node.id, code: node.code, name: node.name, aux_types: node.aux_types || [] })
             setOpen(false)
           }}
         >

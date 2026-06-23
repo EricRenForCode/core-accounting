@@ -62,7 +62,10 @@ api.interceptors.response.use(
       if (!refreshToken) {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+        // Avoid an infinite reload loop when already on the login page.
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
         return Promise.reject(error)
       }
 
@@ -78,7 +81,9 @@ api.interceptors.response.use(
         processQueue(refreshError, null)
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false

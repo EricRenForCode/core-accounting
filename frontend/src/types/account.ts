@@ -30,6 +30,7 @@ export interface CreateAccountRequest {
   code: string
   name: string
   parent_id?: string | null
+  level: number
   type: AccountTypeValue
   dc_type: DCTypeValue
   is_cash?: boolean

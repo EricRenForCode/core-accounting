@@ -1,7 +1,7 @@
 """Fixed Asset model — §2.14"""
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy import (
@@ -75,7 +75,7 @@ class FixedAsset(Base, UUIDPrimaryKeyMixin):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 

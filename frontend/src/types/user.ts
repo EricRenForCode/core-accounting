@@ -6,11 +6,11 @@ export interface User {
   display_name: string
   role_id: string
   role_name?: string
+  permissions: Permission[]
   is_enabled: boolean
   last_login_at?: string
   created_at: string
   updated_at: string
-  [key: string]: unknown
 }
 
 export interface CreateUserRequest {

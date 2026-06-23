@@ -24,11 +24,13 @@ from app.api.v1 import (
     accounts,
     admin,
     ai,
-    assets,
     auth,
     auxiliaries,
-    cashier,
+    bank_journals,
+    bank_reconcile,
+    cash_journals,
     dashboard,
+    fixed_assets,
     health,
     periods,
     reports,
@@ -66,12 +68,12 @@ api_router.include_router(periods.carry_forward_router, prefix="/carry-forward",
 api_router.include_router(auxiliaries.router, prefix="/auxiliaries", tags=["auxiliaries"])
 
 # §3.10 — Cashier
-api_router.include_router(cashier.router, prefix="/cash-journals", tags=["cashier"])
-api_router.include_router(cashier.bank_router, prefix="/bank-journals", tags=["cashier"])
-api_router.include_router(cashier.reconcile_router, prefix="/bank-reconcile", tags=["cashier"])
+api_router.include_router(cash_journals.router, prefix="/cash-journals", tags=["cashier"])
+api_router.include_router(bank_journals.router, prefix="/bank-journals", tags=["cashier"])
+api_router.include_router(bank_reconcile.router, prefix="/bank-reconcile", tags=["cashier"])
 
 # §3.11 — Fixed Assets
-api_router.include_router(assets.router, prefix="/fixed-assets", tags=["assets"])
+api_router.include_router(fixed_assets.router, prefix="/fixed-assets", tags=["assets"])
 
 # §3.12 — AI
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])

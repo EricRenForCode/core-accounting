@@ -21,6 +21,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, hash_password, require_permission, require_role
+from app.models.audit import AuditLog
+from app.models.system_param import SystemParam
 from app.models.user import Role, User
 from app.schemas.common import PaginatedResponse
 from app.schemas.period import (
@@ -299,12 +301,71 @@ async def list_audit_logs(
     _: bool = Depends(require_permission("admin:audit-log")),
 ) -> PaginatedResponse[AuditLogResponse]:
     """View audit trail with filters: user_id, action, resource_type, date range."""
-    raise NotImplementedError(
-        "list_audit_logs:\n"
-        "1. Query AuditLog with optional filters\n"
-        "2. ORDER BY created_at DESC (use idx_audit_logs_created)\n"
-        "3. Paginate\n"
-        "4. Return AuditLogResponse items"
+    query = select(AuditLog)
+    count_q = select(func.count(AuditLog.id))
+
+    if filters.user_id:
+        query = query.where(AuditLog.user_id == filters.user_id)
+        count_q = count_q.where(AuditLog.user_id == filters.user_id)
+    if filters.action:
+        query = query.where(AuditLog.action == filters.action)
+        count_q = count_q.where(AuditLog.action == filters.action)
+    if filters.resource_type:
+        query = query.where(AuditLog.resource_type == filters.resource_type)
+        count_q = count_q.where(AuditLog.resource_type == filters.resource_type)
+    if filters.date_from:
+        query = query.where(AuditLog.created_at >= filters.date_from)
+        count_q = count_q.where(AuditLog.created_at >= filters.date_from)
+    if filters.date_to:
+        query = query.where(AuditLog.created_at <= filters.date_to)
+        count_q = count_q.where(AuditLog.created_at <= filters.date_to)
+
+    # Total count
+    total_result = await db.execute(count_q)
+    total: int = total_result.scalar_one()
+
+    # Paginated results — newest first
+    offset = (filters.page - 1) * filters.page_size
+    query = (
+        query
+        .order_by(AuditLog.created_at.desc())
+        .offset(offset)
+        .limit(filters.page_size)
+    )
+    result = await db.execute(query)
+    logs = result.scalars().all()
+
+    # Resolve usernames in a single batch query
+    user_ids = list({log.user_id for log in logs if log.user_id})
+    username_map: dict = {}
+    if user_ids:
+        user_result = await db.execute(
+            select(User.id, User.username).where(User.id.in_(user_ids))
+        )
+        username_map = {row.id: row.username for row in user_result.all()}
+
+    items = [
+        AuditLogResponse(
+            id=log.id,
+            user_id=log.user_id,
+            username=username_map.get(log.user_id),
+            action=log.action,
+            resource_type=log.resource_type,
+            resource_id=log.resource_id,
+            old_values=log.old_values,
+            new_values=log.new_values,
+            ip_address=str(log.ip_address) if log.ip_address else None,
+            created_at=log.created_at,
+        )
+        for log in logs
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=filters.page,
+        page_size=filters.page_size,
+        pages=math.ceil(total / filters.page_size) if total > 0 else 1,
     )
 
 
@@ -352,23 +413,39 @@ async def get_params(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SystemParams:
-    """Get system parameters (company name, fiscal year start, etc.)."""
-    raise NotImplementedError(
-        "get_params:\n"
-        "1. Read from system_params table or config\n"
-        "2. Return {company_name, fiscal_year_start_month, default_currency, ...}"
-    )
+    """Get system parameters (company name, base currency, etc.)."""
+    result = await db.execute(select(SystemParam).order_by(SystemParam.key))
+    rows = result.scalars().all()
+    params = {row.key: row.value for row in rows}
+    return SystemParams(params=params)
 
 
 @router.put("/params", response_model=SystemParams)
 async def update_params(
+    body: SystemParams,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: bool = Depends(require_permission("admin:users")),
 ) -> SystemParams:
-    """Update system parameters."""
-    raise NotImplementedError(
-        "update_params:\n"
-        "1. Validate and persist parameter updates\n"
-        "2. Return updated params"
-    )
+    """Update system parameters — upserts each key-value pair."""
+    if not body.params:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="params 不能为空",
+        )
+
+    result = await db.execute(select(SystemParam))
+    existing = {row.key: row for row in result.scalars().all()}
+
+    for key, value in body.params.items():
+        if key in existing:
+            existing[key].value = value
+        else:
+            db.add(SystemParam(key=key, value=value))
+
+    await db.flush()
+
+    # Return all params after upsert
+    result = await db.execute(select(SystemParam).order_by(SystemParam.key))
+    rows = result.scalars().all()
+    return SystemParams(params={row.key: row.value for row in rows})

@@ -61,9 +61,14 @@ class AccountTreeNode(BaseModel):
     id: UUID
     code: str
     name: str
+    parent_id: Optional[UUID] = None
     level: int
     type: str
     dc_type: str
+    is_cash: bool = False
+    aux_types: list[str] = Field(default_factory=list)
+    is_quantity: bool = False
+    quantity_unit: Optional[str] = None
     is_enabled: bool
     children: List["AccountTreeNode"] = Field(default_factory=list)
 

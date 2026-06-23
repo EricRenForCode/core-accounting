@@ -15,6 +15,7 @@ from app.models.user import User, Role, RefreshToken
 from app.models.audit import AuditLog
 from app.models.cashier import CashJournal, BankJournal
 from app.models.asset import FixedAsset
+from app.models.system_param import SystemParam
 
 __all__ = [
     # Base
@@ -49,4 +50,6 @@ __all__ = [
     "BankJournal",
     # Asset
     "FixedAsset",
+    # SystemParam
+    "SystemParam",
 ]
