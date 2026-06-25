@@ -217,7 +217,7 @@ export default function AccountsPage() {
 
     // Compute level: 1 for root, parent.level + 1 for children
     const parentLevel = form.parent_id
-      ? accountsData?.accounts?.find((a) => a.id === form.parent_id)?.level
+      ? accountsData?.accounts?.find((a: Account) => a.id === form.parent_id)?.level
       : null
     const level = parentLevel != null ? parentLevel + 1 : 1
 

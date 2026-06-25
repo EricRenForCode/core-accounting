@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import UsersPage from '@/features/admin/UsersPage'
 import RolesPage from '@/features/admin/RolesPage'
 import AccountsPage from '@/features/admin/AccountsPage'
+import DashboardPage from '@/features/dashboard/DashboardPage'
 import PeriodManage from '@/features/admin/PeriodManage'
 import ParamsManage from '@/features/admin/ParamsManage'
 import AuditLogViewer from '@/features/admin/AuditLogViewer'
@@ -13,6 +14,8 @@ import VoucherDetail from '@/features/vouchers/VoucherDetail'
 import VoucherTemplateList from '@/features/vouchers/VoucherTemplateList'
 import VoucherTemplateForm from '@/features/vouchers/VoucherTemplateForm'
 import TrialBalance from '@/features/ledgers/TrialBalance'
+import GeneralLedger from '@/features/ledgers/GeneralLedger'
+import DetailLedger from '@/features/ledgers/DetailLedger'
 import JournalLedger from '@/features/ledgers/JournalLedger'
 import MultiColumnLedger from '@/features/ledgers/MultiColumnLedger'
 import QuantityLedger from '@/features/ledgers/QuantityLedger'
@@ -27,7 +30,6 @@ import IncomeStatementPage from '@/features/reports/IncomeStatement'
 import CashFlowStatementPage from '@/features/reports/CashFlowStatement'
 import ReportTemplateManagerPage from '@/features/reports/ReportTemplateManager'
 import CarryForwardPage from '@/features/period/CarryForward'
-import AIPeriodCheckPage from '@/features/period/PeriodClose'
 import AINLQueryPage from '@/features/ai/AINLQuery'
 import AIReportInterpreterPage from '@/features/ai/AIReportInterpreter'
 import AIVoucherGeneratorPage from '@/features/ai/AIVoucherGenerator'
@@ -38,22 +40,6 @@ import { useUserStore } from '@/stores/userStore'
 import type { Permission } from '@/lib/constants'
 
 // ─── Placeholder pages ──────────────────────────────
-
-function DashboardPage() {
-  return (
-    <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">仪表盘</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {['草稿凭证', '待审核', '已记账', '本月凭证'].map((label) => (
-          <div key={label} className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">—</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function LoginPage() {
   const [username, setUsername] = useState('')
@@ -260,13 +246,13 @@ const trialBalanceRoute = createRoute({
 const generalLedgerRoute = createRoute({
   getParentRoute: () => ledgersRoute,
   path: '/general',
-  component: () => <PlaceholderPage title="总账" />,
+  component: GeneralLedger,
 })
 
 const detailLedgerRoute = createRoute({
   getParentRoute: () => ledgersRoute,
   path: '/detail',
-  component: () => <PlaceholderPage title="三栏明细账" />,
+  component: DetailLedger,
 })
 
 const multiColumnRoute = createRoute({

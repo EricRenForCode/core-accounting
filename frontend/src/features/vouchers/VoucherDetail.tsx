@@ -5,8 +5,6 @@ import { useUserStore } from '@/stores/userStore'
 import { StatusBadge } from '@/components/StatusBadge'
 import { BalanceBar } from '@/components/BalanceBar'
 import { Skeleton } from '@/components/Skeleton'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { VoucherStatusLabels } from '@/lib/constants'
 import { ArrowLeft, CheckCircle, XCircle, Undo2, ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import type { VoucherEntry } from '@/features/vouchers/useVouchers'
 
@@ -128,7 +126,7 @@ function RejectDialog({
 }
 
 export default function VoucherDetail() {
-  const { voucherId } = useParams({ from: '/vouchers/$voucherId' })
+  const { voucherId } = useParams({ from: '/authenticated/vouchers/$voucherId' })
   const navigate = useNavigate()
   const can = useUserStore((s) => s.can)
 

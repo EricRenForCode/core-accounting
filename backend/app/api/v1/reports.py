@@ -1068,25 +1068,20 @@ async def income_statement(
 
     assigned_ids: set[str] = set()
 
-    # 3. Compute net amount for an account: revenue → positive (credit), expense → negative (debit)
+    # 3. 本期金额 (current period only) — this period's activity (current_*).
+    #    revenue → positive (credit side), expense → positive on debit side.
     def _net_amount(acct: AccountModel, bal: AccountBalance | None) -> Decimal:
         if bal is None:
             return Decimal("0")
         if acct.type == "revenue":
-            return bal.closing_credit - bal.closing_debit
+            return bal.current_credit - bal.current_debit
         else:  # expense
-            return bal.closing_debit - bal.closing_credit
+            return bal.current_debit - bal.current_credit
 
+    # 本年累计 (year-to-date) — opening (prior periods this year) + current = closing.
     def _cumulative_amount(acct: AccountModel, bal: AccountBalance | None) -> Decimal:
-        """Year-to-date cumulative = sum of current amounts for all periods
-        up to and including this one.
-        """
         if bal is None:
             return Decimal("0")
-        # For simplicity, use the current_* fields which represent this period's activity.
-        # Cumulative = opening_balance + current activity
-        # But opening_balance already includes prior months' activity.
-        # So: cumulative = opening + current = closing
         if acct.type == "revenue":
             return bal.closing_credit - bal.closing_debit
         else:

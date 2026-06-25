@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { DataTable, type ColumnDef } from '@/components/DataTable/DataTable'
 import { DataTablePagination } from '@/components/DataTable/DataTablePagination'
-import { Search, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AuditLogItem {
@@ -338,9 +338,8 @@ export default function AuditLogViewer() {
         }}
         footer={
           <DataTablePagination
-            currentPage={page}
-            totalPages={data?.pages || 1}
-            totalItems={data?.total || 0}
+            page={page}
+            total={data?.total || 0}
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}

@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react'
-import type { Period, PeriodStatusType } from '@/types/period'
+import type { Period } from '@/types/period'
 import { PeriodStatus } from '@/lib/constants'
 
 // ─── Local Types ─────────────────────────────────────

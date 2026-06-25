@@ -177,7 +177,7 @@ export function DataTable<T extends { id?: unknown }>({
                         {col.cell
                           ? col.cell(row)
                           : col.accessorKey
-                            ? String(row[col.accessorKey as string] ?? '')
+                            ? String(row[col.accessorKey] ?? '')
                             : ''}
                       </td>
                     ))}

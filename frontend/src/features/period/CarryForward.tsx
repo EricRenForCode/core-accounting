@@ -79,7 +79,6 @@ export default function CarryForwardPage() {
   // Load pre-close check
   const {
     data: checkData,
-    isLoading: checkLoading,
   } = useQuery<CheckResponse>({
     queryKey: ['period-check', currentPeriod?.id],
     queryFn: async () => {

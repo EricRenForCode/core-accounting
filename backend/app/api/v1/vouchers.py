@@ -114,6 +114,36 @@ def _voucher_to_response(v: Voucher) -> VoucherResponse:
     )
 
 
+async def _reload_voucher_full(db: AsyncSession, voucher_id) -> Voucher:
+    """Reload a voucher with all relationships eager-loaded for serialization.
+
+    Needed after mutations: `db.refresh()` does not load relationships, so
+    serializing afterwards would trigger lazy IO and fail on async sessions.
+    """
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(Voucher)
+        .options(
+            selectinload(Voucher.entries).selectinload(VoucherEntry.account),
+            selectinload(Voucher.entries)
+            .selectinload(VoucherEntry.auxiliaries)
+            .selectinload(EntryAuxiliary.department),
+            selectinload(Voucher.entries)
+            .selectinload(VoucherEntry.auxiliaries)
+            .selectinload(EntryAuxiliary.individual),
+            selectinload(Voucher.entries)
+            .selectinload(VoucherEntry.auxiliaries)
+            .selectinload(EntryAuxiliary.counterparty),
+            selectinload(Voucher.entries)
+            .selectinload(VoucherEntry.auxiliaries)
+            .selectinload(EntryAuxiliary.project),
+        )
+        .where(Voucher.id == voucher_id)
+    )
+    return result.unique().scalar_one()
+
+
 async def _generate_voucher_no(
     db: AsyncSession, period: Period
 ) -> str:
@@ -578,7 +608,7 @@ async def audit_voucher(
     voucher.status = "audited"
     voucher.auditor_id = current_user.id
     await db.commit()
-    await db.refresh(voucher)
+    voucher = await _reload_voucher_full(db, voucher.id)
 
     return _voucher_to_response(voucher)
 
@@ -633,7 +663,7 @@ async def unaudit_voucher(
     voucher.status = "draft"
     voucher.auditor_id = None
     await db.commit()
-    await db.refresh(voucher)
+    voucher = await _reload_voucher_full(db, voucher.id)
 
     return _voucher_to_response(voucher)
 
@@ -777,7 +807,8 @@ async def post_voucher(
     _invalidate_trial_balance_cache(str(period.id))
 
     await db.flush()
-    await db.refresh(voucher)
+    await db.commit()
+    voucher = await _reload_voucher_full(db, voucher.id)
 
     return _voucher_to_response(voucher)
 
@@ -801,10 +832,11 @@ async def reverse_voucher(
     from datetime import date as dt_date
     from sqlalchemy.orm import selectinload
 
-    # 1. Load original voucher with entries
+    # 1. Load original voucher with entries (+ period, accessed below)
     result = await db.execute(
         select(Voucher)
         .options(
+            selectinload(Voucher.period),
             selectinload(Voucher.entries)
             .selectinload(VoucherEntry.auxiliaries),
         )

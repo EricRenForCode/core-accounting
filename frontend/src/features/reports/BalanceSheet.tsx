@@ -26,7 +26,6 @@ function isNegative(n: number | string): boolean {
 
 function SectionBlock({
   section,
-  side,
 }: {
   section: BalanceSheetSection
   side: 'assets' | 'liabilities_equity'
@@ -77,7 +76,7 @@ function SectionBlock({
 }
 
 export default function BalanceSheetPage() {
-  const search = useSearch({ from: '/reports/balance-sheet' }) as {
+  const search = useSearch({ from: '/authenticated/reports/balance-sheet' }) as {
     period_id?: string
   }
   const { currentPeriod, isLoading: periodLoading } = useCurrentPeriod()

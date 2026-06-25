@@ -20,6 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.dialects.postgresql import JSONB, INET, UUID as PG_UUID
 
 
@@ -81,9 +82,17 @@ from app.models.system_param import SystemParam
 
 # ── Engine ───────────────────────────────────────────────────
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def engine():
-    eng = create_async_engine("sqlite+aiosqlite://", echo=False)
+    # Fresh in-memory DB per test for isolation. StaticPool keeps a single
+    # shared connection so seed sessions and API request sessions see the
+    # same in-memory database.
+    eng = create_async_engine(
+        "sqlite+aiosqlite://",
+        echo=False,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     try:
@@ -111,8 +120,14 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async def override_get_db():
+        # Match production get_db semantics: commit on success, rollback on error.
         async with session_factory() as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
     async def override_get_ai_readonly_db():
         async with session_factory() as session:

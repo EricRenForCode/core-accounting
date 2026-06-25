@@ -13,14 +13,6 @@ import {
   XCircle,
 } from 'lucide-react'
 
-interface Period {
-  id: string
-  year: number
-  month: number
-  status: 'open' | 'closed'
-  closed_at?: string
-}
-
 interface CheckItem {
   id: number
   name: string

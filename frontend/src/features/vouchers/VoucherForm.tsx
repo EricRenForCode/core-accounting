@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -8,7 +8,6 @@ import { AmountInput } from '@/components/AmountInput'
 import { BalanceBar } from '@/components/BalanceBar'
 import { Plus, Trash2, ArrowUpDown } from 'lucide-react'
 import type { AuxTypeValue } from '@/lib/constants'
-import { cn } from '@/lib/utils'
 
 interface AuxiliaryRef {
   aux_type: string
@@ -104,7 +103,7 @@ export default function VoucherForm() {
       const { data: result } = await api.post('/vouchers', data)
       return result
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vouchers'] })
       navigate({ to: '/vouchers', params: {} })
     },
@@ -184,7 +183,7 @@ export default function VoucherForm() {
     })
   }, [])
 
-  const handleSubmit = (saveAsDraft: boolean) => {
+  const handleSubmit = (_saveAsDraft: boolean) => {
     setError('')
 
     if (!currentPeriod) {
@@ -313,9 +312,9 @@ export default function VoucherForm() {
 
       {/* Entry table */}
       <div className="rounded-lg border bg-card mb-4 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[45vh]">
           <table className="w-full">
-            <thead>
+            <thead className="sticky top-0 z-10 [&_th]:bg-gray-50">
               <tr className="border-b bg-gray-50">
                 <th className="w-10 px-3 py-2 text-center text-xs font-medium text-muted-foreground">#</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">科目</th>
@@ -327,8 +326,8 @@ export default function VoucherForm() {
             </thead>
             <tbody>
               {entries.map((entry, idx) => (
-                <>
-                  <tr key={entry.id} className="border-b last:border-b-0 hover:bg-gray-50/50">
+                <Fragment key={entry.id}>
+                  <tr className="border-b last:border-b-0 hover:bg-gray-50/50">
                     <td className="px-3 py-2 text-center text-sm text-muted-foreground font-mono">
                       {idx + 1}
                     </td>
@@ -434,7 +433,7 @@ export default function VoucherForm() {
                       <td />
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

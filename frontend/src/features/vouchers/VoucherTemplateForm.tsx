@@ -97,7 +97,7 @@ function useUpdateTemplate() {
 // ─── Component ──────────────────────────────────────
 
 export default function VoucherTemplateForm() {
-  const { templateId } = useParams({ from: '/vouchers/templates/$templateId' })
+  const { templateId } = useParams({ from: '/authenticated/vouchers/templates/$templateId' })
   const isEdit = !!templateId
   const navigate = useNavigate()
 

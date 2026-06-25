@@ -52,7 +52,7 @@ export function Header({ className }: HeaderProps) {
               {user?.display_name ?? '用户'}
             </div>
             <div className="text-xs text-muted-foreground leading-tight">
-              {user?.role_name ?? user?.role ?? ''}
+              {user?.role_name ?? ''}
             </div>
           </div>
         </div>

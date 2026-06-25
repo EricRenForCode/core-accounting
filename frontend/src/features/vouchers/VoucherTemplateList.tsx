@@ -247,10 +247,10 @@ export default function VoucherTemplateList() {
       <ConfirmDialog
         open={!!deleteId}
         title="删除模板"
-        description="确定要删除此模板吗？此操作不可撤销。"
+        message="确定要删除此模板吗？此操作不可撤销。"
+        variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteId(null)}
-        loading={deleteMutation.isPending}
       />
     </div>
   )

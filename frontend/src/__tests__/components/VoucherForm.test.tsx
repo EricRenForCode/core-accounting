@@ -7,7 +7,7 @@
  * API calls are mocked via vi.mock('@/lib/api') to avoid real HTTP.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import VoucherForm from '@/features/vouchers/VoucherForm'
 
@@ -77,9 +77,6 @@ describe('VoucherForm', () => {
     renderWithProviders(<VoucherForm />)
     // Should have a save/submit button
     const buttons = screen.queryAllByRole('button')
-    const saveButton = buttons.find(b => 
-      b.textContent?.includes('保存') || b.textContent?.includes('提交')
-    )
     // Save button may or may not be immediately visible
     expect(buttons.length).toBeGreaterThanOrEqual(0)
   })

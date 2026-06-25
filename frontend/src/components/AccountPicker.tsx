@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import type { AccountTreeNode } from '@/types/account'
@@ -34,12 +35,57 @@ export function AccountPicker({
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{
+    left: number
+    top?: number
+    bottom?: number
+    width: number
+    maxHeight: number
+  } | null>(null)
+
+  // Position the (portaled) dropdown relative to the trigger, flipping up when
+  // there isn't enough room below — so it's never clipped or off-screen.
+  const updateCoords = useCallback(() => {
+    const el = triggerRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - r.bottom
+    const spaceAbove = r.top
+    const desired = 320
+    const openUp = spaceBelow < desired && spaceAbove > spaceBelow
+    const maxHeight = Math.max(180, (openUp ? spaceAbove : spaceBelow) - 16)
+    setCoords({
+      left: r.left,
+      top: openUp ? undefined : r.bottom + 4,
+      bottom: openUp ? window.innerHeight - r.top + 4 : undefined,
+      width: Math.max(r.width, 320),
+      maxHeight,
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (open) updateCoords()
+  }, [open, updateCoords])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => updateCoords()
+    window.addEventListener('resize', handler)
+    window.addEventListener('scroll', handler, true)
+    return () => {
+      window.removeEventListener('resize', handler)
+      window.removeEventListener('scroll', handler, true)
+    }
+  }, [open, updateCoords])
 
   const { data: tree = [] } = useQuery<AccountTreeNode[]>({
     queryKey: ['accounts', 'tree'],
     queryFn: async () => {
       const { data } = await api.get('/accounts/tree')
-      return data
+      // Backend returns { accounts: [...], total_count }, not a bare array
+      return Array.isArray(data) ? data : (data?.accounts ?? [])
     },
     staleTime: 5 * 60 * 1000,
   })
@@ -47,9 +93,10 @@ export function AccountPicker({
   // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const target = e.target as Node
+      if (containerRef.current?.contains(target)) return
+      if (dropdownRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -145,6 +192,7 @@ export function AccountPicker({
   return (
     <div ref={containerRef} className={cn('relative', className)}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen(!open)}
@@ -168,27 +216,39 @@ export function AccountPicker({
         <span className="ml-auto text-muted-foreground">▼</span>
       </button>
 
-      {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[320px] rounded-md border bg-white shadow-lg">
-          <div className="p-2 border-b">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索科目编码/名称..."
-              className="w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-              autoFocus
-            />
-          </div>
-          <div className="max-h-64 overflow-y-auto p-1">
-            {tree.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">暂无科目数据</p>
-            ) : (
-              tree.map((node) => renderNode(node, 0))
-            )}
-          </div>
-        </div>
-      )}
+      {open && coords &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              left: coords.left,
+              top: coords.top,
+              bottom: coords.bottom,
+              width: coords.width,
+            }}
+            className="z-50 flex flex-col rounded-md border bg-white shadow-lg"
+          >
+            <div className="p-2 border-b">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="搜索科目编码/名称..."
+                className="w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                autoFocus
+              />
+            </div>
+            <div className="overflow-y-auto p-1" style={{ maxHeight: coords.maxHeight }}>
+              {tree.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">暂无科目数据</p>
+              ) : (
+                tree.map((node) => renderNode(node, 0))
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

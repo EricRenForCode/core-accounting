@@ -25,7 +25,7 @@ function isNegative(n: number | string): boolean {
 }
 
 export default function IncomeStatementPage() {
-  const search = useSearch({ from: '/reports/income' }) as {
+  const search = useSearch({ from: '/authenticated/reports/income' }) as {
     period_id?: string
   }
   const { currentPeriod, isLoading: periodLoading } = useCurrentPeriod()
@@ -159,49 +159,27 @@ export default function IncomeStatementPage() {
             {data.totals && (
               <>
                 {/* 营业利润 */}
-                {(data.totals as Record<string, { closing: string; opening: string }>)
-                  .operating_profit && (
+                {data.totals.operating_profit && (
                   <tr className="border-t-2 font-semibold bg-muted/10">
                     <td className="py-2 pl-4">二、营业利润</td>
                     <td className="py-2 pr-3 text-right tabular-nums">
-                      {fmt(
-                        (data.totals as Record<
-                          string,
-                          { closing: string; opening: string }
-                        >).operating_profit.closing,
-                      )}
+                      {fmt(data.totals.operating_profit.closing)}
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
-                      {fmt(
-                        (data.totals as Record<
-                          string,
-                          { closing: string; opening: string }
-                        >).operating_profit.opening,
-                      )}
+                      {fmt(data.totals.operating_profit.opening)}
                     </td>
                   </tr>
                 )}
 
                 {/* 净利润 */}
-                {(data.totals as Record<string, { closing: string; opening: string }>)
-                  .net_profit && (
+                {data.totals.net_profit && (
                   <tr className="border-t-2 border-double font-bold">
                     <td className="py-2 pl-4">四、净利润</td>
                     <td className="py-2 pr-3 text-right tabular-nums">
-                      {fmt(
-                        (data.totals as Record<
-                          string,
-                          { closing: string; opening: string }
-                        >).net_profit.closing,
-                      )}
+                      {fmt(data.totals.net_profit.closing)}
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
-                      {fmt(
-                        (data.totals as Record<
-                          string,
-                          { closing: string; opening: string }
-                        >).net_profit.opening,
-                      )}
+                      {fmt(data.totals.net_profit.opening)}
                     </td>
                   </tr>
                 )}

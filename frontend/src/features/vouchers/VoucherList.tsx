@@ -5,7 +5,7 @@ import api from '@/lib/api'
 import { DataTable, type ColumnDef } from '@/components/DataTable/DataTable'
 import { DataTablePagination } from '@/components/DataTable/DataTablePagination'
 import { StatusBadge } from '@/components/StatusBadge'
-import { Plus, Search, X, CheckCircle, BookOpen } from 'lucide-react'
+import { Plus, X, CheckCircle, BookOpen } from 'lucide-react'
 
 interface VoucherItem {
   id: string
@@ -347,9 +347,8 @@ export default function VoucherList() {
         onRowClick={(row) => { navigate({ to: '/vouchers/$voucherId', params: { voucherId: row.id } }) }}
         footer={
           <DataTablePagination
-            currentPage={page}
-            totalPages={data?.pages || 1}
-            totalItems={data?.total || 0}
+            page={page}
+            total={data?.total || 0}
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}

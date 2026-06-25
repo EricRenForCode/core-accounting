@@ -143,6 +143,23 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Handle Pydantic validation errors with a standard format."""
     errors = exc.errors()
+
+    def _jsonable(value):
+        """Recursively coerce error payloads into JSON-serializable values.
+
+        Pydantic v2 includes the original raised exception object under
+        ``ctx.error`` for validator ValueErrors, which is not JSON
+        serializable and would otherwise crash JSONResponse rendering
+        (turning a 422 into a 500)."""
+        if isinstance(value, dict):
+            return {k: _jsonable(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_jsonable(v) for v in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+    safe_errors = _jsonable(errors)
     detail_msgs = [
         f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}"
         for e in errors[:5]  # Max 5 errors in response
@@ -151,7 +168,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         422,
         "VALIDATION_ERROR",
         "请求参数校验失败",
-        {"errors": errors, "message": "; ".join(detail_msgs)},
+        {"errors": safe_errors, "message": "; ".join(detail_msgs)},
     )
 
 

@@ -11,21 +11,18 @@ interface AmountInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
 
 export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
   ({ value, onChange, decimals = 2, align = 'right', error, className, ...props }, ref) => {
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value.replace(/,/g, '')
-      // Allow only digits and one decimal point
-      if (/^\d*\.?\d*$/.test(raw)) {
-        onChange?.(raw)
-      }
-    }
+    const factor = 10 ** decimals
 
-    const handleBlur = () => {
-      if (value && onChange) {
-        const num = parseFloat(value)
-        if (!isNaN(num)) {
-          onChange(num.toFixed(decimals))
-        }
+    // Cents-style entry: the user types digits only and the decimal point fills
+    // in from the right. e.g. "85678" → 856.78, "8567" → 85.67, backspace shifts back.
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const digits = e.target.value.replace(/\D/g, '')
+      if (digits === '') {
+        onChange?.('')
+        return
       }
+      const amount = parseInt(digits, 10) / factor
+      onChange?.(amount.toFixed(decimals))
     }
 
     const displayValue = value
@@ -40,10 +37,9 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
         <input
           ref={ref}
           type="text"
-          inputMode="decimal"
+          inputMode="numeric"
           value={displayValue}
           onChange={handleChange}
-          onBlur={handleBlur}
           className={cn(
             'w-full rounded-md border bg-card px-3 py-2 font-mono text-sm',
             'focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent',

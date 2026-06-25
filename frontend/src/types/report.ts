@@ -78,8 +78,17 @@ export interface JournalResponse {
   rows: JournalRow[]
 }
 
+// Financial statements (balance sheet, income, cash-flow) all share the same
+// StatementItem / StatementSection shape returned by the backend
+// (app/schemas/report.py: StatementItem, StatementSection).
+export interface StatementAmount {
+  closing: string
+  opening: string
+}
+
 export interface BalanceSheetItem {
   name: string
+  code?: string
   closing: string
   opening: string
 }
@@ -87,7 +96,7 @@ export interface BalanceSheetItem {
 export interface BalanceSheetSection {
   label: string
   items: BalanceSheetItem[]
-  subtotal: { closing: string; opening: string }
+  subtotal: StatementAmount
 }
 
 export interface BalanceSheetResponse {
@@ -95,31 +104,32 @@ export interface BalanceSheetResponse {
   template: { name: string; id: string }
   sections: BalanceSheetSection[]
   totals: {
-    assets: { closing: string; opening: string }
-    liabilities_equity: { closing: string; opening: string }
+    assets: StatementAmount
+    liabilities_equity: StatementAmount
   }
 }
 
 export interface IncomeStatementResponse {
   period: { year: number; month: number }
   template: { name: string; id: string }
-  sections: {
-    label: string
-    items: { name: string; current: string; cumulative: string }[]
-    subtotal: { current: string; cumulative: string }
-  }[]
-  net_profit: { current: string; cumulative: string }
+  sections: BalanceSheetSection[]
+  totals: {
+    revenue?: StatementAmount
+    operating_profit?: StatementAmount
+    net_profit?: StatementAmount
+  }
 }
 
 export interface CashFlowStatementResponse {
   period: { year: number; month: number }
   template: { name: string; id: string }
-  sections: {
-    label: string
-    items: { name: string; amount: string }[]
-    subtotal: string
-  }[]
-  net_increase: string
+  sections: BalanceSheetSection[]
+  totals: {
+    operating?: StatementAmount
+    investing?: StatementAmount
+    financing?: StatementAmount
+    net_increase?: StatementAmount
+  }
 }
 
 export interface ExportRequest {

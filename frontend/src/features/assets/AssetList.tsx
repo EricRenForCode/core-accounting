@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
-import { Plus, Pencil, Trash2, TrendingDown, Ban } from 'lucide-react'
+import { Plus, Pencil, TrendingDown, Ban } from 'lucide-react'
 
 interface FixedAsset {
   id: string
@@ -26,12 +26,6 @@ interface PaginatedAssets {
   page: number
   page_size: number
   pages: number
-}
-
-const METHOD_LABELS: Record<string, string> = {
-  straight: '直线法',
-  double_declining: '双倍余额递减法',
-  sum_of_years: '年数总和法',
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -85,11 +79,6 @@ export default function AssetList() {
     mutationFn: ({ id, body }: { id: string; body: unknown }) => api.put(`/fixed-assets/${id}`, body),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['fixed-assets'] }); resetForm() },
     onError: (e: unknown) => setFormError((e as {response?:{data?:{detail?:string}}})?.response?.data?.detail || '更新失败'),
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => api.delete(`/fixed-assets/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fixed-assets'] }),
   })
 
   const depreciateMut = useMutation({

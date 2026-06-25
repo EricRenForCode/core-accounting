@@ -25,7 +25,7 @@ function isNegative(n: number | string): boolean {
 }
 
 export default function CashFlowStatementPage() {
-  const search = useSearch({ from: '/reports/cash-flow' }) as {
+  const search = useSearch({ from: '/authenticated/reports/cash-flow' }) as {
     period_id?: string
   }
   const { currentPeriod, isLoading: periodLoading } = useCurrentPeriod()
@@ -145,16 +145,11 @@ export default function CashFlowStatementPage() {
             )}
 
             {/* Net increase */}
-            {data.totals && (
+            {data.totals?.net_increase && (
               <tr className="border-t-2 border-double font-bold">
                 <td className="py-2 pl-4">现金及现金等价物净增加额</td>
                 <td className="py-2 pr-3 text-right tabular-nums">
-                  {fmt(
-                    (data.totals as Record<
-                      string,
-                      { closing: string; opening: string }
-                    >).net_increase?.closing,
-                  )}
+                  {fmt(data.totals.net_increase.closing)}
                 </td>
               </tr>
             )}

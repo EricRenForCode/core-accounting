@@ -8,7 +8,8 @@ Tracks: Voucher, VoucherEntry, Account, AccountBalance, Period, User, Role,
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import Request
@@ -82,15 +83,18 @@ def _serialize_instance(instance: Any) -> dict[str, Any]:
     for col in instance.__table__.columns:
         try:
             val = getattr(instance, col.name)
-            # Convert UUID, datetime, Decimal to string for JSONB
+            # Convert non-JSON-native types to JSON-safe values for JSONB.
+            # NOTE: datetime is a subclass of date, so check datetime first.
             if isinstance(val, uuid.UUID):
                 result[col.name] = str(val)
             elif isinstance(val, datetime):
                 result[col.name] = val.isoformat()
-            elif val is not None:
-                result[col.name] = val
+            elif isinstance(val, date):
+                result[col.name] = val.isoformat()
+            elif isinstance(val, Decimal):
+                result[col.name] = float(val)
             else:
-                result[col.name] = None
+                result[col.name] = val
         except Exception:
             result[col.name] = None
     return result

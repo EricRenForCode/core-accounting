@@ -24,7 +24,6 @@ export function AuxPicker({
   value,
   onChange,
   disabled = false,
-  placeholder,
   className,
 }: AuxPickerProps) {
   const apiPath = AuxTypeApiPath[auxType]

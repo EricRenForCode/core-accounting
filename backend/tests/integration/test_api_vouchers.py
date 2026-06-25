@@ -192,7 +192,8 @@ async def test_get_voucher_404(
     """GET /vouchers/{id} — 404 for nonexistent voucher (VOUCHER_NOT_FOUND)."""
     resp = await client.get(f"/api/v1/vouchers/{uuid.uuid4()}", headers=auth_headers)
     assert resp.status_code == 404
-    assert "不存在" in resp.json()["detail"]
+    # Error envelope: {"error": {"code", "message", "detail"}}
+    assert "不存在" in resp.json()["error"]["message"]
 
 
 # ── Audit (POST /vouchers/{id}/audit) ────────────────────────

@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -58,7 +59,7 @@ class Voucher(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     posted_at: Mapped[Optional[datetime]] = mapped_column(
-        nullable=True, comment="记账时间"
+        DateTime(timezone=True), nullable=True, comment="记账时间"
     )
     source: Mapped[str] = mapped_column(
         String(50),
