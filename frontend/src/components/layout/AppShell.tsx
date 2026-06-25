@@ -1,10 +1,14 @@
 import { Outlet } from '@tanstack/react-router'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { IdleLogout } from '@/components/IdleLogout'
 
 export function AppShell() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
+      {/* Idle auto-logout (10 min) */}
+      <IdleLogout />
+
       {/* Header */}
       <Header />
 

@@ -31,12 +31,13 @@ async def test_login_invalid_password(
     client: AsyncClient,
     test_user,
 ):
-    """POST /api/v1/auth/login — should return 400 for wrong password."""
+    """POST /api/v1/auth/login — should return 401 for wrong password."""
     resp = await client.post("/api/v1/auth/login", json={
         "username": "testuser",
         "password": "wrongpassword",
     })
-    assert resp.status_code == 400
+    # 401 is the correct status for failed authentication (bad credentials).
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
