@@ -324,7 +324,7 @@ const periodRoute = createRoute({
 const periodIndexRoute = createRoute({
   getParentRoute: () => periodRoute,
   path: '/',
-  component: () => <PlaceholderPage title="期末处理" />,
+  component: PeriodClosePage,
 })
 
 const periodCloseRoute = createRoute({
@@ -350,7 +350,7 @@ const cashierRoute = createRoute({
 const cashierIndexRoute = createRoute({
   getParentRoute: () => cashierRoute,
   path: '/',
-  component: () => <PlaceholderPage title="出纳管理" />,
+  component: CashJournal,
 })
 
 const cashJournalRoute = createRoute({
@@ -382,7 +382,7 @@ const assetsRoute = createRoute({
 const assetsIndexRoute = createRoute({
   getParentRoute: () => assetsRoute,
   path: '/',
-  component: () => <PlaceholderPage title="固定资产" />,
+  component: AssetList,
 })
 
 const assetListRoute = createRoute({

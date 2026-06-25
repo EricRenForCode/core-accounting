@@ -63,9 +63,34 @@ const menuItems: MenuItem[] = [
       { label: '现金流量表', to: '/reports/cash-flow', icon: <span /> },
     ],
   },
-  { label: '期末处理', to: '/period', icon: <CalendarClock size={20} /> },
-  { label: '出纳管理', to: '/cashier', icon: <Wallet size={20} /> },
-  { label: '固定资产', to: '/assets', icon: <Building2 size={20} /> },
+  {
+    label: '期末处理',
+    to: '/period',
+    icon: <CalendarClock size={20} />,
+    children: [
+      { label: '期末结转', to: '/period/carry-forward', icon: <span /> },
+      { label: '期末结账', to: '/period/close', icon: <span /> },
+    ],
+  },
+  {
+    label: '出纳管理',
+    to: '/cashier',
+    icon: <Wallet size={20} />,
+    children: [
+      { label: '现金日记账', to: '/cashier/cash', icon: <span /> },
+      { label: '银行日记账', to: '/cashier/bank', icon: <span /> },
+      { label: '银行对账', to: '/cashier/reconcile', icon: <span /> },
+    ],
+  },
+  {
+    label: '固定资产',
+    to: '/assets',
+    icon: <Building2 size={20} />,
+    children: [
+      { label: '资产卡片', to: '/assets/list', icon: <span /> },
+      { label: '资产报表', to: '/assets/reports', icon: <span /> },
+    ],
+  },
   { label: 'AI 工作台', to: '/ai', icon: <Sparkles size={20} /> },
   {
     label: '系统管理',
@@ -89,7 +114,7 @@ export function Sidebar() {
   const { isAdmin } = usePermission()
   const location = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['凭证管理', '账表查询', '财务报表', '系统管理']))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['凭证管理', '账表查询', '财务报表', '期末处理', '出纳管理', '固定资产', '系统管理']))
 
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) => {
