@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         default=120, description="Access token lifetime in minutes"
     )
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(
-        default=7, description="Refresh token lifetime in days"
+        default=1, description="Refresh token lifetime in days (daily re-login)"
     )
 
     # ── OpenAI / LLM ──────────────────────────────────────────
