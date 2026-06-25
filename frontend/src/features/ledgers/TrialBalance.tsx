@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { ChevronDown, ChevronRight, Download } from 'lucide-react'
+import type { Period } from '@/types/period'
 
 interface TrialBalanceRow {
   account_id: string
@@ -91,12 +92,25 @@ function RowItem({
 }
 
 export default function TrialBalance() {
+  const [periodId, setPeriodId] = useState('')
   const [level, setLevel] = useState<number | undefined>(undefined)
   const [includeZero, setIncludeZero] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  // Use period_id from store or default
-  const periodId = 'current' // placeholder — would come from useCurrentPeriod()
+  const { data: periodsData, isLoading: periodsLoading } = useQuery<{ periods: Period[] }>({
+    queryKey: ['periods'],
+    queryFn: async () => {
+      const { data } = await api.get('/periods')
+      return data
+    },
+  })
+  const periods = periodsData?.periods || []
+
+  useEffect(() => {
+    if (!periodId && periods.length > 0) {
+      setPeriodId(periods[0].id)
+    }
+  }, [periods, periodId])
 
   const { data, isLoading, isError } = useQuery<TrialBalanceData>({
     queryKey: ['trial-balance', periodId, level, includeZero],
@@ -109,7 +123,7 @@ export default function TrialBalance() {
       const { data } = await api.get<TrialBalanceData>('/reports/trial-balance', { params })
       return data
     },
-    enabled: periodId !== 'current',
+    enabled: !!periodId,
     staleTime: 300_000, // 5 min cache
   })
 
@@ -141,10 +155,25 @@ export default function TrialBalance() {
           <p className="text-sm text-muted-foreground mt-1">
             {data?.period
               ? `${data.period.year}年${data.period.month}月`
-              : '加载中...'}
+              : periodId
+                ? '加载中...'
+                : '请选择会计期间'}
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <select
+            value={periodId}
+            onChange={(e) => setPeriodId(e.target.value)}
+            className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">选择期间</option>
+            {periods.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.year}年{p.month}月
+              </option>
+            ))}
+          </select>
+
           {/* Level filter */}
           <select
             value={level ?? ''}
@@ -189,7 +218,7 @@ export default function TrialBalance() {
       </div>
 
       {/* Loading */}
-      {isLoading && (
+      {(periodsLoading || isLoading) && (
         <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
           <p>加载中...</p>
         </div>
@@ -202,6 +231,19 @@ export default function TrialBalance() {
           <p className="text-sm text-red-500 mt-1">
             请确认已选择有效的会计期间
           </p>
+        </div>
+      )}
+
+      {!periodsLoading && periods.length === 0 && (
+        <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
+          <p className="text-lg">暂无会计期间</p>
+          <p className="text-sm mt-1">请先在系统管理中创建会计期间</p>
+        </div>
+      )}
+
+      {!periodsLoading && periods.length > 0 && !periodId && (
+        <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
+          <p className="text-lg">请选择会计期间查询科目余额表</p>
         </div>
       )}
 

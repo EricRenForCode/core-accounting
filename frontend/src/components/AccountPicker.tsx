@@ -22,6 +22,25 @@ interface AccountPickerProps {
   className?: string
 }
 
+function normalizeAccountNode(node: AccountTreeNode): AccountTreeNode {
+  const children = Array.isArray(node.children) ? node.children : []
+  return {
+    ...node,
+    aux_types: Array.isArray(node.aux_types) ? node.aux_types : [],
+    children: children.map(normalizeAccountNode),
+  }
+}
+
+function normalizeAccountTree(data: unknown): AccountTreeNode[] {
+  const rawTree = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { accounts?: unknown })?.accounts)
+      ? (data as { accounts: unknown[] }).accounts
+      : []
+
+  return rawTree.map((node) => normalizeAccountNode(node as AccountTreeNode))
+}
+
 export function AccountPicker({
   value,
   onChange,
@@ -84,8 +103,7 @@ export function AccountPicker({
     queryKey: ['accounts', 'tree'],
     queryFn: async () => {
       const { data } = await api.get('/accounts/tree')
-      // Backend returns { accounts: [...], total_count }, not a bare array
-      return Array.isArray(data) ? data : (data?.accounts ?? [])
+      return normalizeAccountTree(data)
     },
     staleTime: 5 * 60 * 1000,
   })
