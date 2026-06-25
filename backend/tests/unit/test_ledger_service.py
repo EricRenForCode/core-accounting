@@ -89,7 +89,8 @@ async def test_trial_balance_with_balances(
     # Should find our cash account in the rows
     found = False
     for row in data.get("rows", []):
-        if row.get("account", {}).get("code") == test_cash_account.code:
+        # Trial-balance rows carry code/name directly (not nested under "account")
+        if row.get("code") == test_cash_account.code:
             found = True
             # Verify amounts
             assert Decimal(str(row["current_debit"])) == Decimal("20000.00")
@@ -235,12 +236,11 @@ async def test_quantity_ledger(
     client: AsyncClient,
     auth_headers: dict,
     test_period: Period,
-    test_cash_account: Account,
+    test_quantity_account: Account,
 ):
-    """Quantity ledger should return 200."""
+    """Quantity ledger should return 200 for a quantity-enabled account."""
     resp = await client.get(
-        f"/api/v1/reports/quantity-ledger/{test_cash_account.id}?period_id={test_period.id}",
+        f"/api/v1/reports/quantity-ledger/{test_quantity_account.id}?period_id={test_period.id}",
         headers=auth_headers,
     )
-    # May return 200 or 404 if no quantity data for this account
-    assert resp.status_code in (200, 404)
+    assert resp.status_code == 200

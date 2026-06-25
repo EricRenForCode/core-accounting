@@ -137,13 +137,13 @@ async def test_detail_ledger_api(
     assert "opening_balance" in data
     assert "rows" in data
     assert "closing_balance" in data
-    assert "total_debit" in data
-    assert "total_credit" in data
+    assert "current_debit" in data
+    assert "current_credit" in data
 
-    # Rows should have running balance
+    # Rows should have running balance + direction
     for row in data.get("rows", []):
         assert "balance" in row
-        assert "direction" in row
+        assert "balance_direction" in row
 
 
 @pytest.mark.asyncio
@@ -191,11 +191,14 @@ async def test_quantity_ledger_api(
     client: AsyncClient,
     auth_headers: dict,
     test_period: Period,
-    test_cash_account: Account,
+    test_quantity_account: Account,
 ):
-    """GET /api/v1/reports/quantity-ledger/{account_id} — API validation."""
+    """GET /api/v1/reports/quantity-ledger/{account_id} — API validation.
+
+    Uses a quantity-enabled account (the endpoint returns 400 for accounts
+    that don't have quantity accounting enabled)."""
     resp = await client.get(
-        f"/api/v1/reports/quantity-ledger/{test_cash_account.id}?period_id={test_period.id}",
+        f"/api/v1/reports/quantity-ledger/{test_quantity_account.id}?period_id={test_period.id}",
         headers=auth_headers,
     )
     assert resp.status_code == 200

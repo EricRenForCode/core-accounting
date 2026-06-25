@@ -277,6 +277,18 @@ async def test_liability_account(async_session: AsyncSession) -> Account:
     _, _, liability = await _create_test_accounts(async_session); return liability
 
 @pytest_asyncio.fixture
+async def test_quantity_account(async_session: AsyncSession) -> Account:
+    """An inventory account with quantity accounting enabled (for 数量金额账)."""
+    from sqlalchemy import select
+    result = await async_session.execute(select(Account).where(Account.code == "1405"))
+    acct = result.scalar_one_or_none()
+    if not acct:
+        acct = Account(id=uuid.uuid4(), code="1405", name="库存商品", level=1,
+                       type="asset", dc_type="D", is_quantity=True, is_enabled=True)
+        async_session.add(acct); await async_session.flush()
+    return acct
+
+@pytest_asyncio.fixture
 async def draft_voucher(async_session: AsyncSession) -> Voucher:
     user = await _create_test_user(async_session)
     period = await _create_test_period(async_session)
