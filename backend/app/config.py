@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # ── Database ──────────────────────────────────────────────
@@ -48,16 +49,20 @@ class Settings(BaseSettings):
         default=1, description="Refresh token lifetime in days (daily re-login)"
     )
 
-    # ── OpenAI / LLM ──────────────────────────────────────────
-    OPENAI_API_KEY: SecretStr = Field(
+    # ── DeepSeek / LLM ────────────────────────────────────────
+    DEEPSEEK_API_KEY: SecretStr = Field(
         default=SecretStr("sk-CHANGE_ME"),
-        description="OpenAI API key (used via langchain-openai)",
+        description="DeepSeek API key (OpenAI-compatible API)",
     )
-    AI_MODEL: str = Field(
-        default="gpt-4o", description="Default AI model identifier"
+    DEEPSEEK_BASE_URL: str = Field(
+        default="https://api.deepseek.com",
+        description="DeepSeek OpenAI-compatible API base URL",
     )
-    AI_FALLBACK_MODEL: str = Field(
-        default="gpt-4o-mini", description="Fallback model if primary fails"
+    DEEPSEEK_MODEL: str = Field(
+        default="deepseek-v4-flash", description="Default DeepSeek model identifier"
+    )
+    DEEPSEEK_FALLBACK_MODEL: str = Field(
+        default="deepseek-v4-pro", description="Fallback DeepSeek model if primary fails"
     )
 
     # ── CORS ──────────────────────────────────────────────────
