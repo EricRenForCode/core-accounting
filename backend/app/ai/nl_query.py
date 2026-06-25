@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.llm_client import invoke_structured
-from app.core.errors import ReadOnlyViolationError
+from app.core.errors import AIInvalidResponseError, ReadOnlyViolationError
 from app.schemas.period import AIQueryResponse
 
 
@@ -34,6 +34,34 @@ def validate_readonly_sql(sql: str) -> str:
     if "LIMIT" not in sql.upper():
         sql = sql.rstrip(";").rstrip() + " LIMIT 1000"
 
+    return sql
+
+
+def extract_sql_from_llm_response(raw_response: str) -> str:
+    """Extract SQL from DeepSeek JSON mode response or legacy bare SQL."""
+    sql = raw_response.strip()
+    if sql.startswith("```"):
+        sql = sql.split("\n", 1)[1] if "\n" in sql else sql[3:]
+        if sql.endswith("```"):
+            sql = sql[:-3]
+        sql = sql.strip()
+
+    try:
+        parsed = json.loads(sql)
+        if isinstance(parsed, dict):
+            sql = str(parsed.get("sql") or parsed.get("query") or "")
+    except json.JSONDecodeError:
+        pass
+
+    sql = sql.strip()
+    if sql.startswith("```"):
+        sql = sql.split("\n", 1)[1] if "\n" in sql else sql[3:]
+        if sql.endswith("```"):
+            sql = sql[:-3]
+        sql = sql.strip()
+
+    if not sql:
+        raise AIInvalidResponseError("missing sql field")
     return sql
 
 
@@ -91,21 +119,16 @@ Question: {question}
 Instructions:
 - Generate a single SELECT query that answers the question
 - Use proper JOINs and aggregations as needed
-- Return ONLY the SQL, no markdown, no explanation
 - Use LIMIT in your query
 - All UUID columns are stored as UUID type
 - Use COALESCE for nullable sums
+- Return JSON only, in this exact shape: {{"sql": "SELECT ..."}}
 """
 
-    # 3. Call LLM
-    raw_sql = await invoke_structured(prompt)
-    # Extract SQL from possible markdown fences
-    sql = raw_sql.strip()
-    if sql.startswith("```"):
-        sql = sql.split("\n", 1)[1] if "\n" in sql else sql[3:]
-        if sql.endswith("```"):
-            sql = sql[:-3]
-    sql = sql.strip()
+    # 3. Call LLM. DeepSeek JSON mode returns a JSON object; keep a fallback
+    # for providers or tests that still return a bare SQL string.
+    raw_response = await invoke_structured(prompt)
+    sql = extract_sql_from_llm_response(raw_response)
 
     # 4. Validate SQL (CRITICAL SECURITY)
     sql = validate_readonly_sql(sql)

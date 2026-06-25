@@ -54,15 +54,11 @@ class Settings(BaseSettings):
         default=SecretStr("sk-CHANGE_ME"),
         description="DeepSeek API key (OpenAI-compatible API)",
     )
-    DEEPSEEK_BASE_URL: str = Field(
-        default="https://api.deepseek.com",
-        description="DeepSeek OpenAI-compatible API base URL",
-    )
     DEEPSEEK_MODEL: str = Field(
-        default="deepseek-v4-flash", description="Default DeepSeek model identifier"
+        default="deepseek-chat", description="Default DeepSeek model identifier"
     )
     DEEPSEEK_FALLBACK_MODEL: str = Field(
-        default="deepseek-v4-pro", description="Fallback DeepSeek model if primary fails"
+        default="deepseek-chat", description="Fallback DeepSeek model if primary fails"
     )
 
     # ── CORS ──────────────────────────────────────────────────

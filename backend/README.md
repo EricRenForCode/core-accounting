@@ -9,7 +9,7 @@ Enterprise-grade Chinese accounting system API built with FastAPI.
 - **Database:** PostgreSQL 15 (asyncpg driver, SQLAlchemy 2.0 async ORM)
 - **Cache / Queue:** Redis 7, Celery 5
 - **Auth:** JWT (access + refresh tokens), RBAC with 3 roles
-- **AI:** DeepSeek API via LangChain/OpenAI-compatible client (voucher generation, NL query, report interpretation)
+- **AI:** DeepSeek API via LangChain ChatDeepSeek (voucher generation, NL query, report interpretation)
 - **Migrations:** Alembic (async)
 
 ## Prerequisites
@@ -46,9 +46,8 @@ Edit `.env` and update the key values:
 | `AI_READONLY_DATABASE_URL` | `postgresql+asyncpg://accounting:accounting@localhost:5432/core_accounting` |
 | `JWT_SECRET` | Run `openssl rand -hex 32` and paste the output |
 | `DEEPSEEK_API_KEY` | Your DeepSeek API key (for AI features) |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` |
-| `DEEPSEEK_MODEL` | `deepseek-v4-flash` |
-| `DEEPSEEK_FALLBACK_MODEL` | `deepseek-v4-pro` |
+| `DEEPSEEK_MODEL` | `deepseek-chat` |
+| `DEEPSEEK_FALLBACK_MODEL` | `deepseek-chat` |
 
 ### 3. Create a virtual environment and install dependencies
 

@@ -28,10 +28,10 @@ export default function AINLQueryPage() {
       setError('')
     },
     onError: (err: unknown) => {
-      setError(
-        (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || '查询失败',
-      )
+      const data = (err as {
+        response?: { data?: { detail?: string; error?: { message?: string } } }
+      })?.response?.data
+      setError(data?.detail || data?.error?.message || '查询失败')
     },
   })
 
