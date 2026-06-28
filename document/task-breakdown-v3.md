@@ -1,0 +1,142 @@
+# Core Accounting — 改进与完善任务分解 v3
+
+> **来源**: 基于 `task-breakdown-v2.md`(现状) + `document/engineering-spec.md` v0.2 + 本轮端到端实测结果
+> **创建**: 2026-06-28
+> **定位**: v2 记录「建了什么 / 修了什么」;**v3 记录「还能改进什么、接下来做什么」**——按优先级排序的收尾与提升路线图。
+
+---
+
+## 0. 现状基线（v2 结束时）
+
+- 核心会计流程端到端跑通：科目→凭证→审核(双人)→记账→账表→报表→冲销,账目勾稽正确。
+- 前端 `npm run build` 通过;后端测试 **84 通过 / 5 失败(仅 AI 模块)**。
+- 已加:仪表盘、总账/明细账前端、金额「分」录入、闲置 10 分钟自动登出、refresh token 1 天。
+- 已修真实 bug:记账崩溃、审核/记账/冲销 MissingGreenlet、审计 date/Decimal、校验 422、AccountPicker 崩溃、利润表两列。
+- 代码在分支 `fix/mvp-voucher-reports-dashboard`(未合并 master)。
+
+---
+
+## P0 — 正确性收尾（先清这些，风险最高 / 投入最小）🔴
+
+### P0.1 AI 模块 2 个 Decimal 序列化 bug
+- [ ] `test_ai_report_interpret`(integration + unit)报 `Object of type Decimal is not JSON serializable`——与已修的 date/audit 同类。
+- [ ] 定位 AI 把含 `Decimal` 的报表数据塞进 JSON 的位置(`app/ai/report_interpreter.py` / `llm_client` prompt 构建),统一转 `float`/`str`。
+- [ ] **不依赖 OPENAI_API_KEY 即可修**(失败发生在序列化阶段,在调用 LLM 之前/之后的数据处理)。
+
+### P0.2 refresh token 轮换前后端不一致 ⚠️（会话实际比预期短）
+- [ ] 后端 `/auth/refresh` 会**轮换**(撤销旧 refresh、签发新 access+refresh 对,`auth.py:139`);但前端 `lib/api.ts` 刷新后**只保存了 `access_token`,丢弃了新 refresh_token** → 下次刷新拿着已撤销的旧 token → 提前被登出。
+- [ ] 修前端拦截器:`localStorage.setItem('refresh_token', data.refresh_token)`(若响应含),与后端轮换对齐。
+- [ ] 复核与「refresh=1 天」的交互:确认确实是「登录起 24h 强制重登」,而非每 2h 掉线。
+
+### P0.3 其余 4 张账表页仍是无效占位
+- [ ] `TrialBalance / JournalLedger / QuantityLedger / MultiColumnLedger` 仍用 `periodId = 'current'` + `enabled: periodId !== 'current'` → query **从不触发**,页面拉不到数据。
+- [ ] 统一改为真实期间下拉(复用总账/明细账已落地的 `GET /periods` 模式);数量账加末级/数量科目筛选。
+
+### P0.4 登录初始化可用性
+- [ ] 现有 admin 用户非 `seed.py` 所建(密码非 admin123);`seed.py` 因 roles 已存在会**跳过补建科目**。
+- [ ] 提供可重复的初始化:`seed.py` 改为「分段幂等」(角色/用户/科目各自 get-or-create),或单独的「补建科目」脚本;文档写明默认账号。
+
+---
+
+## P1 — 让真实用户能直接用（MVP 上线前必备）🟠
+
+### P1.1 首次启动 / 建账引导
+- [ ] 标准会计科目表种子(已有 ~20 个一级科目;补二级/末级常用科目,标注 `is_cash`/`is_quantity`)。
+- [ ] 首个会计期间创建引导(目前需手动建期间才能录凭证)。
+- [ ] 期初余额录入界面(新建账套必备;spec §2.9 account_balances 有 opening_*)。
+
+### P1.2 环境与配置
+- [ ] `.env.prod` 模板 + 校验(DB / Redis / JWT_SECRET / OPENAI_API_KEY / CORS origins)。
+- [ ] 生产关闭 SQLAlchemy `echo`(目前 DEBUG 时日志刷屏,确认 prod 为 false)。
+
+### P1.3 报表导出落地（spec §3.7 / P6.4）
+- [ ] `POST /statements/export` 真正产出 Excel/PDF(目前为占位/stub),并接前端「导出」按钮(试算平衡表导出现为 stub)。
+
+---
+
+## P2 — AI 模块激活与完善（spec §3.12 / §7.3）🟡
+
+> 后端已实现四大功能 + NL 查询安全(sqlparse 仅 SELECT、强制 LIMIT 1000、ai_readonly 只读库、5s `statement_timeout`)。主要差「配 key + 实测 + 前端补全」。
+
+- [ ] 配置 `OPENAI_API_KEY` 后端到端实测:智能凭证生成/修正、报表解读、期末检查、NL 查询 + 解释。
+- [ ] 智能凭证:校验「科目必须存在 → 借贷平衡 → 不平自动修正(≤1 次)」实际生效(§7.3)。
+- [ ] NL 查询:`conversation_id` 连续追问、执行耗时、SQL 可展开。
+- [ ] 前端缺口:`AIChatPanel`(右下角全局悬浮面板)、独立 `AIPeriodChecker` 页(目前期末检查并入 PeriodClose)。
+- [ ] 成本与稳定:LLM 调用重试/超时/降级(主备模型已有);记录 token 用量。
+
+---
+
+## P3 — 测试与质量（spec §8）🟡
+
+- [ ] 修复 AI 余下 5 个测试(配 key 后)→ 后端全绿。
+- [ ] 后端覆盖率达标:services ≥ 80%、API ≥ 70%(目前未测覆盖率)。
+- [ ] Playwright e2e(spec §8 前端):`voucher-flow`(录入→审核→记账→查询)、`ledger-flow`、`period-close`、`ai-voucher`。
+- [ ] 前端组件/hook 测试补充(VoucherForm 交互、useVouchers)。
+- [ ] CI 流水线:PR 触发 `pytest` + `tsc -b` + `vitest` + e2e。
+- [ ] 回归:把本轮修的真实 bug 各补一条针对性测试(记账 tz、序列化、MissingGreenlet)。
+
+---
+
+## P4 — 性能与基础设施（spec §2.15 / §4 / §7）🟢
+
+- [ ] **索引核对**(§2.15):逐条确认 DDL 索引已建(凭证 period/status/date、分录 account、审计 created/resource、余额 period+account 唯一等)。
+- [ ] **Redis 缓存真实落地**:目前 `trial-balance` 失效为 best-effort no-op;接真 Redis(科目树 5min stale、试算平衡缓存 + 记账后失效)。
+- [ ] **Celery 异步任务**:`app/tasks/` 仅有空包;把批量折旧、期末结转执行等长任务改异步(prod compose 已留 celery worker);进度回传前端。
+- [ ] API 响应 P95 < 200ms(不含 AI):对账表/报表做 `EXPLAIN ANALYZE` 慢查询分析。
+- [ ] 大数据量分页/虚拟滚动(凭证列表、明细账)。
+
+---
+
+## P5 — 安全加固 🟢
+
+- [ ] **限流中间件**:目前只有 CORS / CorrelationID / AuditContext,无 rate limit(spec §4 提及)。给登录、AI、写接口加限流。
+- [ ] 审计日志补 `old_values`(目前 after_flush 只记 new_values;UPDATE 拿不到旧值,§2.12 设计有 old/new 对比)。
+- [ ] 密码策略(强度/改密/锁定)、JWT_SECRET 走密管、HTTPS(nginx 已在,补证书/HSTS)。
+- [ ] 权限矩阵端到端核对(§2.10 的 23 项权限是否都在接口 `require_permission` 落地)。
+- [ ] 闲置登出已做 ✅;可选:多标签页同步登出、绝对会话上限提示。
+
+---
+
+## P6 — 功能 / UX 完善 🟢
+
+- [ ] 利润表「上期对比」列:需有上一期间数据才显差异;补「上年同期」对比口径(spec §3.7 本期/本年累计已对)。
+- [ ] 凭证模板「生成凭证」预填(从模板带入分录到录入页)。
+- [ ] 银行对账 UX:自动匹配结果可手工调整、余额调节表打印。
+- [ ] 固定资产:折旧计划表预览、批量折旧进度、卡片变更历史。
+- [ ] 辅助核算:明细账 + 账龄分析前端页打磨(后端已实现)。
+- [ ] 多栏明细账动态列前端体验;数量金额账单价显示。
+- [ ] 全局:键盘流(凭证录入快捷键已部分)、打印样式、空状态/错误态统一。
+
+---
+
+## P7 — 部署与运维 🟢
+
+- [ ] Alembic 迁移核对:确保模型变更(如本轮 `posted_at` tz)有对应迁移;首部署 `alembic upgrade head` 流程。
+- [ ] 生产 compose 实跑验证(Nginx + FastAPI + Celery + DB + Redis);健康检查/重启策略。
+- [ ] 数据库备份/恢复脚本验证(`backups/` 目录已在,内容待核)。
+- [ ] 日志/监控:结构化日志(已有 CorrelationID)、错误上报、基础指标。
+- [ ] 代码分支合并:`fix/mvp-voucher-reports-dashboard` → master(评审后)。
+
+---
+
+## P8 — 文档与交付 🟢
+
+- [ ] 面向会计的「使用手册」(非技术):建账→录凭证→审核记账→出报表→期末结账。
+- [ ] README / 部署文档 / API 文档(`/docs` 已自动生成,补业务说明)。
+- [ ] 默认账号、初始化步骤、常见问题(如金额「分」录入规则、双人审核约束)。
+
+---
+
+## 🎯 建议执行顺序（最小代价 → 最大价值）
+
+1. **P0 全清**(AI Decimal、refresh 前后端、4 张账表页、seed/登录)——半天到一天,清掉所有「看起来坏了」。
+2. **P1.1 + P1.2**(建账引导 + .env.prod)——让非技术用户能从零开账套。
+3. **P2 配 key 实测 AI** + **P3 修 AI 测试**——后端全绿、AI 可用。
+4. **P1.3 报表导出** + **P6 关键 UX**——交付感。
+5. **P4 性能 / P5 安全 / P7 部署**——上线前硬化。
+6. **P3 e2e + CI / P8 文档**——可持续维护。
+
+---
+
+## 📌 一句话
+> v2 把系统从「会崩」修到「能用」;**v3 的目标是从「能演示」到「能交付给真实财务每天用」**——重点是 P0 收尾正确性、P1 建账引导、P2 AI 激活,其余按上线节奏推进。
