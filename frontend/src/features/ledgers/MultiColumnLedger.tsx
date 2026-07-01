@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { AccountPicker, type SelectedAccount } from '@/components/AccountPicker'
+import type { Period } from '@/types/period'
 
 interface ColumnDef {
   account_code: string
@@ -35,8 +37,25 @@ function fmt(n: number | string): string {
 }
 
 export default function MultiColumnLedger() {
-  const [accountId, setAccountId] = useState('')
+  const [account, setAccount] = useState<SelectedAccount | null>(null)
   const [periodId, setPeriodId] = useState('')
+  const accountId = account?.id || ''
+
+  const { data: periodsData } = useQuery<{ periods: Period[] }>({
+    queryKey: ['periods'],
+    queryFn: async () => {
+      const { data } = await api.get('/periods')
+      return data
+    },
+  })
+  const periods = periodsData?.periods || []
+
+  // Default to the most recent period once the list loads
+  useEffect(() => {
+    if (!periodId && periods.length > 0) {
+      setPeriodId(periods[0].id)
+    }
+  }, [periods, periodId])
 
   const { data, isLoading, isError, error } = useQuery<MultiColumnData>({
     queryKey: ['multi-column-ledger', accountId, periodId],
@@ -69,20 +88,26 @@ export default function MultiColumnLedger() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <input
-            type="text"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="rounded-md border px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent w-48"
-            placeholder="科目ID"
-          />
-          <input
-            type="text"
+          <div className="w-64">
+            <AccountPicker
+              value={account?.id}
+              onChange={setAccount}
+              filter={(a) => !a.children || a.children.length === 0}
+              placeholder="选择科目..."
+            />
+          </div>
+          <select
             value={periodId}
             onChange={(e) => setPeriodId(e.target.value)}
-            className="rounded-md border px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent w-48"
-            placeholder="期间ID"
-          />
+            className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">选择期间</option>
+            {periods.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.year}年{p.month}月
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -106,7 +131,7 @@ export default function MultiColumnLedger() {
       {/* Placeholder when no params */}
       {!accountId || !periodId ? (
         <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
-          <p className="text-lg">请输入科目ID和期间ID查询多栏明细账</p>
+          <p className="text-lg">请选择科目和会计期间查询多栏明细账</p>
           <p className="text-sm mt-2">
             多栏明细账按对方科目展开多栏，显示每个凭证中涉及的所有对方科目金额
           </p>
