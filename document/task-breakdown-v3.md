@@ -18,15 +18,21 @@
 
 ## P0 — 正确性收尾（先清这些，风险最高 / 投入最小）🔴
 
-### P0.1 AI 模块 2 个 Decimal 序列化 bug
-- [ ] `test_ai_report_interpret`(integration + unit)报 `Object of type Decimal is not JSON serializable`——与已修的 date/audit 同类。
-- [ ] 定位 AI 把含 `Decimal` 的报表数据塞进 JSON 的位置(`app/ai/report_interpreter.py` / `llm_client` prompt 构建),统一转 `float`/`str`。
-- [ ] **不依赖 OPENAI_API_KEY 即可修**(失败发生在序列化阶段,在调用 LLM 之前/之后的数据处理)。
+### P0.1 AI 模块 2 个 Decimal 序列化 bug ✅
+- [x] `test_ai_report_interpret`(integration + unit)报 `Object of type Decimal is not JSON serializable`——与已修的 date/audit 同类。
+- [x] 定位:`app/ai/report_interpreter.py:43` 的 `json.dumps(report_data.model_dump())`——报表 NUMERIC 字段 `model_dump()` 出来是 `Decimal`。改为 `model_dump(mode="json")`,一次性把 Decimal/date/UUID 转成 JSON 安全值(`voucher_generator.py:176` 的 `parsed` 是 `json.loads` 结果,纯 JSON 类型,无此问题)。
+- [x] **不依赖 OPENAI_API_KEY 即可修**:失败发生在调用 LLM 之前的 prompt 构建阶段。
+- [x] 结果:后端 **86 通过**(原 84),两条 interpret 测试转绿,无回归。
+- 附:修复测试环境依赖缺口——`aiosqlite`(测试内存库)加入 dev extras;`bcrypt` 固定 `==4.0.1`(与 `requirements.txt` 对齐,`pyproject.toml` 原无 pin 被解析到 5.0.0,与 passlib 不兼容)。
 
-### P0.2 refresh token 轮换前后端不一致 ⚠️（会话实际比预期短）
-- [ ] 后端 `/auth/refresh` 会**轮换**(撤销旧 refresh、签发新 access+refresh 对,`auth.py:139`);但前端 `lib/api.ts` 刷新后**只保存了 `access_token`,丢弃了新 refresh_token** → 下次刷新拿着已撤销的旧 token → 提前被登出。
-- [ ] 修前端拦截器:`localStorage.setItem('refresh_token', data.refresh_token)`(若响应含),与后端轮换对齐。
-- [ ] 复核与「refresh=1 天」的交互:确认确实是「登录起 24h 强制重登」,而非每 2h 掉线。
+### P0.2 refresh token 轮换前后端不一致 ⚠️（会话实际比预期短）✅
+- [x] 后端 `/auth/refresh` 会**轮换**(撤销旧 refresh、签发新 access+refresh 对,`auth.py:174` `rotate_refresh_token`);但前端 `lib/api.ts` 刷新后**只保存了 `access_token`,丢弃了新 refresh_token** → 下次刷新拿着已撤销的旧 token → 提前被登出。
+- [x] 修前端拦截器:刷新成功后 `if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)`,与后端轮换对齐(`lib/api.ts:76-83`)。
+- [x] 复核有效期语义(结论):access=120min、refresh=1 天,但 `rotate_refresh_token`(`security.py:388-397`)**每次刷新都重签 24h**——是**滑动窗口**,不是「登录起固定 24h」。
+  - 修复前:第 1 次刷新(~2h)成功但存了失效的旧 refresh → 第 2 次刷新(~4h)拿已撤销 token → 401 强制登出(即所谓「提前掉线」,约每 4h)。
+  - 修复后:轮换链不断,**活跃用户可持续续期**;闲置满 24h(实际由前端「闲置 10min 自动登出」先触发)才登出。**既非每 2h 掉线,也非登录起 24h 强制重登**。
+  - ⚠️ 待产品决策:若真要「每天强制重登」(绝对 24h 上限),需在轮换时保留首次登录的 `exp`/加 `absolute_expiry`,而非每次重签——目前实现下活跃用户永不强制重登。
+- [x] 验证:改动与相邻 `data.access_token` 同型(带守卫),不引入类型错误;前端全量 `tsc -b`/`vitest` 待 `pnpm install` 后跑。
 
 ### P0.3 其余 4 张账表页仍是无效占位
 - [ ] `TrialBalance / JournalLedger / QuantityLedger / MultiColumnLedger` 仍用 `periodId = 'current'` + `enabled: periodId !== 'current'` → query **从不触发**,页面拉不到数据。
