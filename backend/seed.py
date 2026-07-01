@@ -1,5 +1,12 @@
-"""Seed script: create default roles, admin user, and basic chart of accounts."""
+"""Seed script: create default roles, admin user, and basic chart of accounts.
+
+Idempotent by section: roles, the admin user, and the chart of accounts are
+each get-or-create, so re-running (or running against a DB that already has
+some of them) safely fills in only what's missing — instead of skipping
+everything the moment any role exists.
+"""
 import asyncio
+import json
 import os
 from uuid import uuid4
 
@@ -44,22 +51,28 @@ DEFAULT_ACCOUNTS = [
     {"code": "6603", "name": "财务费用", "level": 1, "type": "expense", "dc_type": "D"},
 ]
 
+async def get_or_create_role(db: AsyncSession, name: str, perms: dict) -> str:
+    """Return the id of role `name`, creating it if it does not exist."""
+    result = await db.execute(
+        text("SELECT id FROM roles WHERE name = :name"), {"name": name}
+    )
+    existing = result.scalar()
+    if existing is not None:
+        return str(existing)
+    rid = str(uuid4())
+    await db.execute(
+        text("INSERT INTO roles (id, name, permissions) VALUES (:id, :name, :perms::jsonb)"),
+        {"id": rid, "name": name, "perms": json.dumps(perms)},
+    )
+    return rid
+
+
 async def seed():
     engine = create_async_engine(DATABASE_URL)
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with maker() as db:
-        # Check if already seeded
-        result = await db.execute(text("SELECT count(*) FROM roles"))
-        if result.scalar() > 0:
-            print("Database already seeded, skipping.")
-            return
-
-        # Create roles
-        admin_role_id = str(uuid4())
-        staff_role_id = str(uuid4())
-        manager_role_id = str(uuid4())
-
+        # ── Roles (get-or-create by unique name) ─────────────────────
         admin_perms = {p: True for p in PERMISSIONS}
         staff_perms = {p: p in [
             'voucher:create', 'voucher:edit:own', 'voucher:delete:draft',
@@ -67,30 +80,34 @@ async def seed():
         ] for p in PERMISSIONS}
         manager_perms = {p: p not in ['admin:users', 'admin:roles', 'admin:backup'] for p in PERMISSIONS}
 
-        for rid, name, perms in [
-            (admin_role_id, "admin", admin_perms),
-            (staff_role_id, "finance_staff", staff_perms),
-            (manager_role_id, "finance_manager", manager_perms),
-        ]:
-            await db.execute(
-                text("INSERT INTO roles (id, name, permissions) VALUES (:id, :name, :perms::jsonb)"),
-                {"id": rid, "name": name, "perms": str(perms).replace("'", '"')},
-            )
+        admin_role_id = await get_or_create_role(db, "admin", admin_perms)
+        await get_or_create_role(db, "finance_staff", staff_perms)
+        await get_or_create_role(db, "finance_manager", manager_perms)
 
-        # Create admin user (password: admin123)
-        password_hash = hash_password("admin123")
-        admin_id = str(uuid4())
-        await db.execute(
-            text("INSERT INTO users (id, username, password_hash, display_name, role_id, is_enabled) VALUES (:id, :username, :ph, :dn, :rid, :enabled)"),
-            {"id": admin_id, "username": "admin", "ph": password_hash, "dn": "系统管理员", "rid": admin_role_id, "enabled": True},
+        # ── Admin user (get-or-create by unique username) ────────────
+        result = await db.execute(
+            text("SELECT id FROM users WHERE username = :u"), {"u": "admin"}
         )
+        admin_created = False
+        if result.scalar() is None:
+            await db.execute(
+                text("INSERT INTO users (id, username, password_hash, display_name, role_id, is_enabled) VALUES (:id, :username, :ph, :dn, :rid, :enabled)"),
+                {"id": str(uuid4()), "username": "admin", "ph": hash_password("admin123"),
+                 "dn": "系统管理员", "rid": admin_role_id, "enabled": True},
+            )
+            admin_created = True
 
-        # Create chart of accounts
+        # ── Chart of accounts (get-or-create by unique code) ─────────
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
+        accounts_created = 0
         for acct in DEFAULT_ACCOUNTS:
-            await db.execute(
-                text("INSERT INTO accounts (id, code, name, level, type, dc_type, is_cash, is_enabled, created_at, updated_at) VALUES (:id, :code, :name, :level, :type, :dc_type, :is_cash, :enabled, :now, :now)"),
+            result = await db.execute(
+                text(
+                    "INSERT INTO accounts (id, code, name, level, type, dc_type, is_cash, is_enabled, created_at, updated_at) "
+                    "VALUES (:id, :code, :name, :level, :type, :dc_type, :is_cash, :enabled, :now, :now) "
+                    "ON CONFLICT (code) DO NOTHING"
+                ),
                 {
                     "id": str(uuid4()),
                     "code": acct["code"],
@@ -103,9 +120,15 @@ async def seed():
                     "now": now,
                 },
             )
+            accounts_created += result.rowcount or 0
 
         await db.commit()
-        print(f"Seeded: 3 roles, 1 admin user (admin/admin123), {len(DEFAULT_ACCOUNTS)} accounts")
+        admin_note = "admin user (admin/admin123)" if admin_created else "admin user already existed (password unchanged)"
+        print(
+            f"Seed done: roles ensured, {admin_note}, "
+            f"{accounts_created}/{len(DEFAULT_ACCOUNTS)} accounts created "
+            f"({len(DEFAULT_ACCOUNTS) - accounts_created} already present)."
+        )
 
     await engine.dispose()
 
