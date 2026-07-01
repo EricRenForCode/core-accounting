@@ -15,8 +15,10 @@ services:
       POSTGRES_USER: ${DB_USER:-accounting}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?required}
       POSTGRES_DB: ${DB_NAME:-core_accounting}
-    ports:
-      - "${DB_PORT:-5432}:5432"
+    # No host port published — reachable only on the internal network as
+    # "db:5432". Avoids collisions with other stacks' Postgres on the host.
+    # To connect a DB GUI temporarily: docker compose exec db psql ... or add
+    # a ports mapping on a free host port.
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
@@ -35,8 +37,8 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    # No host port published — reachable only on the internal network as
+    # "redis:6379". Avoids collisions with other stacks' Redis on the host.
     volumes:
       - redisdata:/data
     healthcheck:
