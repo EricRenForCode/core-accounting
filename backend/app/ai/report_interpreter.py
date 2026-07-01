@@ -40,8 +40,12 @@ async def interpret_report(
         report_data = await trial_balance(period_id=period_id, db=db)
 
     # 2. Build analysis prompt with report data
+    #    mode="json" makes Decimal/date/UUID values JSON-safe (report NUMERIC
+    #    fields come back as Decimal, which json.dumps cannot serialize).
     report_json = json.dumps(
-        report_data.model_dump() if hasattr(report_data, "model_dump") else str(report_data),
+        report_data.model_dump(mode="json")
+        if hasattr(report_data, "model_dump")
+        else str(report_data),
         ensure_ascii=False,
         indent=2,
     )[:6000]  # Truncate for prompt size limit

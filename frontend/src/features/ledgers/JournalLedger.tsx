@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { Download } from 'lucide-react'
+import type { Period } from '@/types/period'
 
 interface JournalRow {
   date: string
@@ -29,7 +30,23 @@ function fmt(n: number | string): string {
 export default function JournalLedger() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const periodId = 'current'
+  const [periodId, setPeriodId] = useState('')
+
+  const { data: periodsData } = useQuery<{ periods: Period[] }>({
+    queryKey: ['periods'],
+    queryFn: async () => {
+      const { data } = await api.get('/periods')
+      return data
+    },
+  })
+  const periods = periodsData?.periods || []
+
+  // Default to the most recent period once the list loads
+  useEffect(() => {
+    if (!periodId && periods.length > 0) {
+      setPeriodId(periods[0].id)
+    }
+  }, [periods, periodId])
 
   const { data, isLoading, isError } = useQuery<JournalData>({
     queryKey: ['journal', periodId, dateFrom, dateTo],
@@ -40,7 +57,7 @@ export default function JournalLedger() {
       const { data } = await api.get<JournalData>('/reports/journal', { params })
       return data
     },
-    enabled: periodId !== 'current',
+    enabled: !!periodId,
   })
 
   return (
@@ -52,10 +69,24 @@ export default function JournalLedger() {
           <p className="text-sm text-muted-foreground mt-1">
             {data?.period
               ? `${data.period.year}年${data.period.month}月`
-              : '加载中...'}
+              : periodId
+                ? '加载中...'
+                : '请选择会计期间'}
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <select
+            value={periodId}
+            onChange={(e) => setPeriodId(e.target.value)}
+            className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">选择期间</option>
+            {periods.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.year}年{p.month}月
+              </option>
+            ))}
+          </select>
           <input
             type="date"
             value={dateFrom}
@@ -87,6 +118,12 @@ export default function JournalLedger() {
       {isError && (
         <div className="rounded-lg border bg-red-50 p-8 text-center">
           <p className="text-red-600 font-medium">加载序时账失败</p>
+        </div>
+      )}
+
+      {!periodId && (
+        <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
+          <p className="text-lg">请选择会计期间查询序时账</p>
         </div>
       )}
 

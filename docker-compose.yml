@@ -14,8 +14,11 @@ services:
       POSTGRES_USER: accounting
       POSTGRES_PASSWORD: accounting
       POSTGRES_DB: core_accounting
-    ports:
-      - "5432:5432"
+    # No host port published — reachable only on the internal network as
+    # "db:5432". Avoids collisions with other stacks' Postgres on the host.
+    # Need host access (DB GUI)? Uncomment and pick a free port:
+    #   ports:
+    #     - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -27,8 +30,8 @@ services:
   # ── Redis 7 ────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # No host port published — reachable only on the internal network as
+    # "redis:6379". Avoids collisions with other stacks' Redis on the host.
     volumes:
       - redisdata:/data
     healthcheck:

@@ -74,6 +74,12 @@ api.interceptors.response.use(
           refresh_token: refreshToken,
         })
         localStorage.setItem('access_token', data.access_token)
+        // Backend rotates refresh tokens: /auth/refresh revokes the old one and
+        // returns a new pair. Persist the new refresh_token, otherwise the next
+        // refresh sends a revoked token and the user is logged out early.
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token)
+        }
         processQueue(null, data.access_token)
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`
         return api(originalRequest)

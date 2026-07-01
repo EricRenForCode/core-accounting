@@ -18,23 +18,37 @@
 
 ## P0 — 正确性收尾（先清这些，风险最高 / 投入最小）🔴
 
-### P0.1 AI 模块 2 个 Decimal 序列化 bug
-- [ ] `test_ai_report_interpret`(integration + unit)报 `Object of type Decimal is not JSON serializable`——与已修的 date/audit 同类。
-- [ ] 定位 AI 把含 `Decimal` 的报表数据塞进 JSON 的位置(`app/ai/report_interpreter.py` / `llm_client` prompt 构建),统一转 `float`/`str`。
-- [ ] **不依赖 OPENAI_API_KEY 即可修**(失败发生在序列化阶段,在调用 LLM 之前/之后的数据处理)。
+### P0.1 AI 模块 2 个 Decimal 序列化 bug ✅
+- [x] `test_ai_report_interpret`(integration + unit)报 `Object of type Decimal is not JSON serializable`——与已修的 date/audit 同类。
+- [x] 定位:`app/ai/report_interpreter.py:43` 的 `json.dumps(report_data.model_dump())`——报表 NUMERIC 字段 `model_dump()` 出来是 `Decimal`。改为 `model_dump(mode="json")`,一次性把 Decimal/date/UUID 转成 JSON 安全值(`voucher_generator.py:176` 的 `parsed` 是 `json.loads` 结果,纯 JSON 类型,无此问题)。
+- [x] **不依赖 OPENAI_API_KEY 即可修**:失败发生在调用 LLM 之前的 prompt 构建阶段。
+- [x] 结果:后端 **86 通过**(原 84),两条 interpret 测试转绿,无回归。
+- 附:修复测试环境依赖缺口——`aiosqlite`(测试内存库)加入 dev extras;`bcrypt` 固定 `==4.0.1`(与 `requirements.txt` 对齐,`pyproject.toml` 原无 pin 被解析到 5.0.0,与 passlib 不兼容)。
 
-### P0.2 refresh token 轮换前后端不一致 ⚠️（会话实际比预期短）
-- [ ] 后端 `/auth/refresh` 会**轮换**(撤销旧 refresh、签发新 access+refresh 对,`auth.py:139`);但前端 `lib/api.ts` 刷新后**只保存了 `access_token`,丢弃了新 refresh_token** → 下次刷新拿着已撤销的旧 token → 提前被登出。
-- [ ] 修前端拦截器:`localStorage.setItem('refresh_token', data.refresh_token)`(若响应含),与后端轮换对齐。
-- [ ] 复核与「refresh=1 天」的交互:确认确实是「登录起 24h 强制重登」,而非每 2h 掉线。
+### P0.2 refresh token 轮换前后端不一致 ⚠️（会话实际比预期短）✅
+- [x] 后端 `/auth/refresh` 会**轮换**(撤销旧 refresh、签发新 access+refresh 对,`auth.py:174` `rotate_refresh_token`);但前端 `lib/api.ts` 刷新后**只保存了 `access_token`,丢弃了新 refresh_token** → 下次刷新拿着已撤销的旧 token → 提前被登出。
+- [x] 修前端拦截器:刷新成功后 `if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)`,与后端轮换对齐(`lib/api.ts:76-83`)。
+- [x] 复核有效期语义(结论):access=120min、refresh=1 天,但 `rotate_refresh_token`(`security.py:388-397`)**每次刷新都重签 24h**——是**滑动窗口**,不是「登录起固定 24h」。
+  - 修复前:第 1 次刷新(~2h)成功但存了失效的旧 refresh → 第 2 次刷新(~4h)拿已撤销 token → 401 强制登出(即所谓「提前掉线」,约每 4h)。
+  - 修复后:轮换链不断,**活跃用户可持续续期**;闲置满 24h(实际由前端「闲置 10min 自动登出」先触发)才登出。**既非每 2h 掉线,也非登录起 24h 强制重登**。
+  - ⚠️ 待产品决策:若真要「每天强制重登」(绝对 24h 上限),需在轮换时保留首次登录的 `exp`/加 `absolute_expiry`,而非每次重签——目前实现下活跃用户永不强制重登。
+- [x] 验证:改动与相邻 `data.access_token` 同型(带守卫),不引入类型错误;前端全量 `tsc -b`/`vitest` 待 `pnpm install` 后跑。
 
-### P0.3 其余 4 张账表页仍是无效占位
-- [ ] `TrialBalance / JournalLedger / QuantityLedger / MultiColumnLedger` 仍用 `periodId = 'current'` + `enabled: periodId !== 'current'` → query **从不触发**,页面拉不到数据。
-- [ ] 统一改为真实期间下拉(复用总账/明细账已落地的 `GET /periods` 模式);数量账加末级/数量科目筛选。
+### P0.3 其余 4 张账表页仍是无效占位 ✅
+- [x] 实测复核:`TrialBalance` **已**是正确的 `/periods` 下拉模式(文档此处偏旧);真正坏的是另外三张:
+  - `JournalLedger`:硬编码 `const periodId = 'current'` + `enabled: periodId !== 'current'` → query 从不触发。
+  - `QuantityLedger` / `MultiColumnLedger`:虽有 `periodId` state,但用**裸文本框让用户手输科目/期间 UUID**,且未拉取 `/periods`,实际同样点不动。
+- [x] 统一改为真实期间下拉(复用 `GET /periods` 模式,默认选中最近期间)。
+- [x] `Quantity`/`MultiColumn` 的科目输入改为 `AccountPicker`;数量账加**末级 + `is_quantity` 科目筛选**(`filter={(a) => a.is_quantity && 无子节点}`)。
+- [x] 验证:`tsc -b` + `vite build` 均通过。
 
-### P0.4 登录初始化可用性
-- [ ] 现有 admin 用户非 `seed.py` 所建(密码非 admin123);`seed.py` 因 roles 已存在会**跳过补建科目**。
-- [ ] 提供可重复的初始化:`seed.py` 改为「分段幂等」(角色/用户/科目各自 get-or-create),或单独的「补建科目」脚本;文档写明默认账号。
+### P0.4 登录初始化可用性 ✅
+- [x] 根因:`seed.py` 开头 `SELECT count(*) FROM roles > 0` 就整体 `return` → 只要有任何角色,**用户和科目都被一并跳过**。
+- [x] 改为「分段幂等」:角色按唯一 `name`、admin 用户按唯一 `username`、科目按唯一 `code`(`ON CONFLICT (code) DO NOTHING`)各自 get-or-create;重复运行只补缺失项。
+- [x] admin 用户缺失时按 `admin/admin123` 建;已存在则保留(不改密),并在输出中明确提示。
+- [x] 顺带修正:角色 `permissions` 用 `json.dumps`(原 `str().replace("'",'"')` 会生成非法 JSON 的 `True/False`)。
+- [x] 默认账号:**admin / admin123**(见 seed 输出与 [[P8 文档]])。
+- [x] 验证:`python -m py_compile seed.py` 通过;后端 86 测试无回归。(实际连库跑 seed 需 DB,建议部署时随 `alembic upgrade head` 后执行。)
 
 ---
 
