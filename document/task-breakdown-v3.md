@@ -34,13 +34,21 @@
   - ⚠️ 待产品决策:若真要「每天强制重登」(绝对 24h 上限),需在轮换时保留首次登录的 `exp`/加 `absolute_expiry`,而非每次重签——目前实现下活跃用户永不强制重登。
 - [x] 验证:改动与相邻 `data.access_token` 同型(带守卫),不引入类型错误;前端全量 `tsc -b`/`vitest` 待 `pnpm install` 后跑。
 
-### P0.3 其余 4 张账表页仍是无效占位
-- [ ] `TrialBalance / JournalLedger / QuantityLedger / MultiColumnLedger` 仍用 `periodId = 'current'` + `enabled: periodId !== 'current'` → query **从不触发**,页面拉不到数据。
-- [ ] 统一改为真实期间下拉(复用总账/明细账已落地的 `GET /periods` 模式);数量账加末级/数量科目筛选。
+### P0.3 其余 4 张账表页仍是无效占位 ✅
+- [x] 实测复核:`TrialBalance` **已**是正确的 `/periods` 下拉模式(文档此处偏旧);真正坏的是另外三张:
+  - `JournalLedger`:硬编码 `const periodId = 'current'` + `enabled: periodId !== 'current'` → query 从不触发。
+  - `QuantityLedger` / `MultiColumnLedger`:虽有 `periodId` state,但用**裸文本框让用户手输科目/期间 UUID**,且未拉取 `/periods`,实际同样点不动。
+- [x] 统一改为真实期间下拉(复用 `GET /periods` 模式,默认选中最近期间)。
+- [x] `Quantity`/`MultiColumn` 的科目输入改为 `AccountPicker`;数量账加**末级 + `is_quantity` 科目筛选**(`filter={(a) => a.is_quantity && 无子节点}`)。
+- [x] 验证:`tsc -b` + `vite build` 均通过。
 
-### P0.4 登录初始化可用性
-- [ ] 现有 admin 用户非 `seed.py` 所建(密码非 admin123);`seed.py` 因 roles 已存在会**跳过补建科目**。
-- [ ] 提供可重复的初始化:`seed.py` 改为「分段幂等」(角色/用户/科目各自 get-or-create),或单独的「补建科目」脚本;文档写明默认账号。
+### P0.4 登录初始化可用性 ✅
+- [x] 根因:`seed.py` 开头 `SELECT count(*) FROM roles > 0` 就整体 `return` → 只要有任何角色,**用户和科目都被一并跳过**。
+- [x] 改为「分段幂等」:角色按唯一 `name`、admin 用户按唯一 `username`、科目按唯一 `code`(`ON CONFLICT (code) DO NOTHING`)各自 get-or-create;重复运行只补缺失项。
+- [x] admin 用户缺失时按 `admin/admin123` 建;已存在则保留(不改密),并在输出中明确提示。
+- [x] 顺带修正:角色 `permissions` 用 `json.dumps`(原 `str().replace("'",'"')` 会生成非法 JSON 的 `True/False`)。
+- [x] 默认账号:**admin / admin123**(见 seed 输出与 [[P8 文档]])。
+- [x] 验证:`python -m py_compile seed.py` 通过;后端 86 测试无回归。(实际连库跑 seed 需 DB,建议部署时随 `alembic upgrade head` 后执行。)
 
 ---
 
