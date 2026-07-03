@@ -26,6 +26,7 @@ dependencies = [
     "socksio>=1.0.0",
     "sqlparse>=0.5.0",
     "structlog>=24.0.0",
+    "openpyxl>=3.1.5",
 ]
 
 [project.optional-dependencies]

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
-import { ChevronDown, ChevronRight, Download } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ExportButton } from '@/components/ExportButton'
 import type { Period } from '@/types/period'
 
 interface TrialBalanceRow {
@@ -210,10 +211,7 @@ export default function TrialBalance() {
           </button>
 
           {/* Export */}
-          <button className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors">
-            <Download size={14} />
-            导出
-          </button>
+          <ExportButton type="trial_balance" periodId={periodId} />
         </div>
       </div>
 

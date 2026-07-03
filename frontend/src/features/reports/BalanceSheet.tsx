@@ -4,6 +4,7 @@ import api from '@/lib/api'
 import { useCurrentPeriod } from '@/hooks/useCurrentPeriod'
 import { Skeleton } from '@/components/Skeleton'
 import { ErrorCard } from '@/components/ErrorCard'
+import { ExportButton } from '@/components/ExportButton'
 import type {
   BalanceSheetResponse,
   BalanceSheetSection,
@@ -176,6 +177,11 @@ export default function BalanceSheetPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+      {/* Toolbar */}
+      <div className="flex justify-end mb-2">
+        <ExportButton type="balance_sheet" periodId={periodId} />
+      </div>
+
       {/* Header */}
       <div className="text-center mb-6">
         <h2 className="text-xl font-bold">资产负债表</h2>

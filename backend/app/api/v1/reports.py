@@ -1575,6 +1575,15 @@ async def export_statement(
             current_user=current_user,
         )
         title = "现金流量表"
+    elif body.type == "trial_balance":
+        statement_data = await trial_balance(
+            period_id=body.period_id,
+            level=None,
+            include_zero=False,
+            db=db,
+            current_user=current_user,
+        )
+        title = "科目余额表"
     else:
         raise HTTPException(status_code=400, detail=f"Unknown statement type: {body.type}")
 
@@ -1639,6 +1648,8 @@ async def export_statement(
             _export_income_excel(ws, row, statement_data)
         elif body.type == "cash_flow":
             _export_cash_flow_excel(ws, row, statement_data)
+        elif body.type == "trial_balance":
+            _export_trial_balance_excel(ws, row, statement_data)
 
         # Save to buffer
         buffer = BytesIO()
@@ -1933,5 +1944,95 @@ def _export_cash_flow_excel(ws, start_row: int, data: CashFlowStatementResponse)
         cell2.alignment = right_align
         cell2.border = thin_border
         row += 1
+
+    return row
+
+
+def _export_trial_balance_excel(ws, start_row: int, data: TrialBalanceResponse) -> int:
+    """Write trial balance (科目余额表) tree to Excel worksheet."""
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
+    normal_font = Font(name="微软雅黑", size=10)
+    bold_font = Font(name="微软雅黑", size=10, bold=True)
+    header_font = Font(name="微软雅黑", size=10, bold=True)
+    right_align = Alignment(horizontal="right", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center")
+    center_align = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+    header_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+
+    row = start_row
+
+    # Two-tier header: group labels over paired 借/贷 columns
+    columns = [
+        ("科目编码", 12), ("科目名称", 24),
+        ("期初借方", 15), ("期初贷方", 15),
+        ("本期借方", 15), ("本期贷方", 15),
+        ("期末借方", 15), ("期末贷方", 15),
+    ]
+    for col, (text, width) in enumerate(columns, 1):
+        cell = ws.cell(row=row, column=col, value=text)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        cell.border = thin_border
+        ws.column_dimensions[cell.column_letter].width = width
+    row += 1
+
+    def _fmt(v):
+        try:
+            f = float(v)
+            return f"{f:,.2f}" if f else ""
+        except (ValueError, TypeError):
+            return str(v) if v else ""
+
+    def _write_row(tb_row, depth: int) -> None:
+        nonlocal row
+        indent = "　" * depth  # full-width space for tree indent
+        name_cell = ws.cell(row=row, column=2, value=f"{indent}{tb_row.name}")
+        name_cell.font = bold_font if depth == 0 else normal_font
+        name_cell.alignment = left_align
+        code_cell = ws.cell(row=row, column=1, value=tb_row.code)
+        code_cell.font = normal_font
+        code_cell.alignment = left_align
+        amounts = [
+            tb_row.opening_debit, tb_row.opening_credit,
+            tb_row.current_debit, tb_row.current_credit,
+            tb_row.closing_debit, tb_row.closing_credit,
+        ]
+        for i, amt in enumerate(amounts, 3):
+            c = ws.cell(row=row, column=i, value=_fmt(amt))
+            c.font = bold_font if depth == 0 else normal_font
+            c.alignment = right_align
+            c.border = thin_border
+        code_cell.border = thin_border
+        name_cell.border = thin_border
+        row += 1
+        for child in tb_row.children:
+            _write_row(child, depth + 1)
+
+    for tb_row in data.rows:
+        _write_row(tb_row, 0)
+
+    # Totals
+    s = data.summary
+    total_cell = ws.cell(row=row, column=1, value="合计")
+    total_cell.font = bold_font
+    total_cell.border = thin_border
+    ws.cell(row=row, column=2).border = thin_border
+    totals = [
+        s.total_opening_debit, s.total_opening_credit,
+        s.total_current_debit, s.total_current_credit,
+        s.total_closing_debit, s.total_closing_credit,
+    ]
+    for i, amt in enumerate(totals, 3):
+        c = ws.cell(row=row, column=i, value=_fmt(amt))
+        c.font = bold_font
+        c.alignment = right_align
+        c.border = thin_border
+    row += 1
 
     return row

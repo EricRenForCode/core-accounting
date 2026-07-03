@@ -234,6 +234,6 @@ class CashFlowStatementResponse(BaseModel):
 class StatementExportRequest(BaseModel):
     """POST /statements/export request body."""
 
-    type: str = Field(..., pattern="^(balance_sheet|income|cash_flow)$")
+    type: str = Field(..., pattern="^(balance_sheet|income|cash_flow|trial_balance)$")
     period_id: UUID
     format: str = Field(default="excel", pattern="^(excel|pdf)$")

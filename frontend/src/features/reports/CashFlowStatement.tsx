@@ -4,6 +4,7 @@ import api from '@/lib/api'
 import { useCurrentPeriod } from '@/hooks/useCurrentPeriod'
 import { Skeleton } from '@/components/Skeleton'
 import { ErrorCard } from '@/components/ErrorCard'
+import { ExportButton } from '@/components/ExportButton'
 import type {
   CashFlowStatementResponse,
   BalanceSheetSection,
@@ -78,6 +79,11 @@ export default function CashFlowStatementPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
+      {/* Toolbar */}
+      <div className="flex justify-end mb-2">
+        <ExportButton type="cash_flow" periodId={periodId} />
+      </div>
+
       {/* Header */}
       <div className="text-center mb-6">
         <h2 className="text-xl font-bold">现金流量表</h2>
