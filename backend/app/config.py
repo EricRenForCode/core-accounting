@@ -75,10 +75,58 @@ class Settings(BaseSettings):
     # ── Application ───────────────────────────────────────────
     APP_NAME: str = Field(default="Core Accounting", description="Application name")
     APP_VERSION: str = Field(default="0.1.0", description="Application version")
-    DEBUG: bool = Field(default=False, description="Debug mode")
+    DEBUG: bool = Field(default=False, description="Debug mode (SQLAlchemy echo)")
+    ENVIRONMENT: str = Field(
+        default="development",
+        description="Deployment environment: 'development' or 'production'. "
+        "Production enables strict startup config validation.",
+    )
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.strip().lower() == "production"
 
     # ── System User ───────────────────────────────────────────
     SYSTEM_USER_ID: str = Field(
         default="00000000-0000-0000-0000-000000000000",
         description="System user UUID for automated operations (carry-forward, etc.)",
     )
+
+    # ── Production validation ─────────────────────────────────
+    _INSECURE_JWT_SECRET = "CHANGE_ME_IN_PRODUCTION_USE_A_STRONG_SECRET"
+
+    def production_issues(self) -> list[str]:
+        """Return a list of critical misconfigurations for production.
+
+        Only meaningful when ENVIRONMENT=production. A non-empty list means the
+        app should refuse to start (see startup validation in main.py).
+        """
+        issues: list[str] = []
+
+        if (
+            self.JWT_SECRET == self._INSECURE_JWT_SECRET
+            or len(self.JWT_SECRET) < 32
+        ):
+            issues.append(
+                "JWT_SECRET is the default or too short (<32 chars). "
+                "Generate a strong one: openssl rand -hex 32"
+            )
+
+        if "CHANGE_ME" in self.DATABASE_URL:
+            issues.append("DATABASE_URL still contains a placeholder password (CHANGE_ME).")
+
+        if any("localhost" in o or "127.0.0.1" in o for o in self.CORS_ORIGINS):
+            issues.append(
+                "CORS_ORIGINS contains localhost — set your real frontend origin(s) in production."
+            )
+
+        return issues
+
+    def production_warnings(self) -> list[str]:
+        """Return non-fatal production warnings (logged, do not block startup)."""
+        warnings: list[str] = []
+        if self.DEEPSEEK_API_KEY.get_secret_value().endswith("CHANGE_ME"):
+            warnings.append(
+                "DEEPSEEK_API_KEY is a placeholder — AI features will be unavailable."
+            )
+        return warnings

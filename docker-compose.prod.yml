@@ -66,6 +66,7 @@ services:
       - AI_READONLY_DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
       - REDIS_URL=redis://redis:6379/0
       - DEBUG=false
+      - ENVIRONMENT=production
     depends_on:
       db:
         condition: service_healthy
@@ -93,6 +94,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
       - REDIS_URL=redis://redis:6379/0
       - DEBUG=false
+      - ENVIRONMENT=production
     depends_on:
       db:
         condition: service_healthy

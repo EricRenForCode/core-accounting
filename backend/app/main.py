@@ -15,6 +15,7 @@ Run with:
     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -32,9 +33,32 @@ from app.core.middleware import AuditContextMiddleware, CorrelationIDMiddleware
 settings = Settings()
 
 
+def _validate_production_config(settings: Settings) -> None:
+    """Refuse to start with insecure defaults when ENVIRONMENT=production.
+
+    Local/dev runs (ENVIRONMENT=development) skip these checks so the shipped
+    defaults stay convenient; production fails fast with a clear message.
+    """
+    if not settings.is_production:
+        return
+
+    for warning in settings.production_warnings():
+        logging.getLogger("app.config").warning("Config warning: %s", warning)
+
+    issues = settings.production_issues()
+    if issues:
+        details = "\n  - ".join(issues)
+        raise RuntimeError(
+            "Refusing to start: insecure production configuration:\n  - "
+            + details
+            + "\nFix these in backend/.env.prod (see .env.prod.example)."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — configure engines on startup, dispose on shutdown."""
+    _validate_production_config(settings)
     configure_db(settings)
     install_audit_listeners()
     yield
