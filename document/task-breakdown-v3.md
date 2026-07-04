@@ -55,16 +55,17 @@
 ## P1 — 让真实用户能直接用（MVP 上线前必备）🟠
 
 ### P1.1 首次启动 / 建账引导
-- [ ] 标准会计科目表种子(已有 ~20 个一级科目;补二级/末级常用科目,标注 `is_cash`/`is_quantity`)。
+- [x] 标准会计科目表种子:从 18 增至 34 个科目,补二级/末级(货币资金明细、预付/其他应收、累计折旧、无形资产、应付职工薪酬/增值税子目、长期借款、资本/盈余公积、其他业务成本、税金及附加、所得税费用),并按 `parent` code 连成树(`parent_id` 落地);存货(原材料/库存商品)标 `is_quantity`+`quantity_unit`,银行子户标 `is_cash`(`seed.py`)。
 - [ ] 首个会计期间创建引导(目前需手动建期间才能录凭证)。
-- [ ] 期初余额录入界面(新建账套必备;spec §2.9 account_balances 有 opening_*)。
+- [ ] 期初余额录入界面(新建账套必备;spec §2.9 account_balances 有 opening_*)。**需先加后端期初余额写入接口**(现 `periods.py` 只有 create/close/reopen,无 opening balance 写入)。
 
-### P1.2 环境与配置
-- [ ] `.env.prod` 模板 + 校验(DB / Redis / JWT_SECRET / OPENAI_API_KEY / CORS origins)。
-- [ ] 生产关闭 SQLAlchemy `echo`(目前 DEBUG 时日志刷屏,确认 prod 为 false)。
+### P1.2 环境与配置 ✅
+- [x] `.env.prod` 模板(`backend/.env.prod.example`)+ 启动校验:新增 `ENVIRONMENT`(development/production,与 `DEBUG` 解耦以免本地 `DEBUG=false` 被误判)。生产启动拒绝不安全默认值(默认/过短 `JWT_SECRET`、DB 占位密码、localhost CORS);缺 `DEEPSEEK_API_KEY` 仅告警不阻断。compose.prod 注入 `ENVIRONMENT=production`。
+- [x] 生产关闭 SQLAlchemy `echo`:`database.py` 已 `echo=settings.DEBUG`,prod `DEBUG=false` 即关闭(已确认并文档化)。
 
-### P1.3 报表导出落地（spec §3.7 / P6.4）
-- [ ] `POST /statements/export` 真正产出 Excel/PDF(目前为占位/stub),并接前端「导出」按钮(试算平衡表导出现为 stub)。
+### P1.3 报表导出落地（spec §3.7 / P6.4）✅
+- [x] `POST /statements/export` 真正产出 Excel(资产负债表/利润表/现金流量表已实现,补 `openpyxl` 依赖——此前缺依赖会 500;新增 `trial_balance` 类型 + 树形 Excel helper)。PDF 仍返回 501(明确提示用 Excel)。
+- [x] 前端「导出」按钮接活:新增 `exportStatement()` 下载工具 + `ExportButton` 组件(blob 下载、loading/error、无期间禁用),接到 TrialBalance / BalanceSheet / IncomeStatement / CashFlowStatement(原为死按钮/无按钮)。
 
 ---
 
