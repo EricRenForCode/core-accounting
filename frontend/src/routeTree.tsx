@@ -35,6 +35,7 @@ import AIReportInterpreterPage from '@/features/ai/AIReportInterpreter'
 import AIVoucherGeneratorPage from '@/features/ai/AIVoucherGenerator'
 import AIWorkspacePage from '@/features/ai/AIWorkspace'
 import PeriodClosePage from '@/features/period/PeriodClose'
+import OpeningBalancesPage from '@/features/period/OpeningBalances'
 import api from '@/lib/api'
 import { useUserStore } from '@/stores/userStore'
 import type { Permission } from '@/lib/constants'
@@ -339,6 +340,12 @@ const carryForwardRoute = createRoute({
   component: CarryForwardPage,
 })
 
+const openingBalancesRoute = createRoute({
+  getParentRoute: () => periodRoute,
+  path: '/opening-balances',
+  component: OpeningBalancesPage,
+})
+
 // ─── Cashier ────────────────────────────────────────
 
 const cashierRoute = createRoute({
@@ -528,6 +535,7 @@ export const routeTree = rootRoute.addChildren([
     periodIndexRoute,
     periodCloseRoute,
     carryForwardRoute,
+    openingBalancesRoute,
   ]),
   cashierRoute.addChildren([
     cashierIndexRoute,

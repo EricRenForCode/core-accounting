@@ -68,6 +68,7 @@ const menuItems: MenuItem[] = [
     to: '/period',
     icon: <CalendarClock size={20} />,
     children: [
+      { label: '期初余额', to: '/period/opening-balances', icon: <span /> },
       { label: '期末结转', to: '/period/carry-forward', icon: <span /> },
       { label: '期末结账', to: '/period/close', icon: <span /> },
     ],
