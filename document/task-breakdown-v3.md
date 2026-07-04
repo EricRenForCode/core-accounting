@@ -54,10 +54,10 @@
 
 ## P1 — 让真实用户能直接用（MVP 上线前必备）🟠
 
-### P1.1 首次启动 / 建账引导
+### P1.1 首次启动 / 建账引导 ✅
 - [x] 标准会计科目表种子:从 18 增至 34 个科目,补二级/末级(货币资金明细、预付/其他应收、累计折旧、无形资产、应付职工薪酬/增值税子目、长期借款、资本/盈余公积、其他业务成本、税金及附加、所得税费用),并按 `parent` code 连成树(`parent_id` 落地);存货(原材料/库存商品)标 `is_quantity`+`quantity_unit`,银行子户标 `is_cash`(`seed.py`)。
-- [ ] 首个会计期间创建引导(目前需手动建期间才能录凭证)。
-- [ ] 期初余额录入界面(新建账套必备;spec §2.9 account_balances 有 opening_*)。**需先加后端期初余额写入接口**(现 `periods.py` 只有 create/close/reopen,无 opening balance 写入)。
+- [x] 首个会计期间创建引导:`PeriodManage`(`/admin/periods`)已有空状态引导「请先创建一个会计期间开始使用」+ 创建对话框(年/月、重复校验),满足从零建期间。(未做多步 wizard,MVP 够用。)
+- [x] 期初余额录入界面(`/period/opening-balances`):新增后端 `GET/PUT /periods/{id}/opening-balances`(校验:期间开放、无记账活动、单边为零、仅末级、借贷平衡;closing=opening),前端末级科目借/贷录入 + 实时平衡校验 + 只读态(已结账/已有凭证)。
 
 ### P1.2 环境与配置 ✅
 - [x] `.env.prod` 模板(`backend/.env.prod.example`)+ 启动校验:新增 `ENVIRONMENT`(development/production,与 `DEBUG` 解耦以免本地 `DEBUG=false` 被误判)。生产启动拒绝不安全默认值(默认/过短 `JWT_SECRET`、DB 占位密码、localhost CORS);缺 `DEEPSEEK_API_KEY` 仅告警不阻断。compose.prod 注入 `ENVIRONMENT=production`。
