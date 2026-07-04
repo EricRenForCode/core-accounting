@@ -39,6 +39,43 @@ class PeriodListResponse(BaseModel):
     total: int
 
 
+class OpeningBalanceRow(BaseModel):
+    """A single account's opening balance for entry (§2.9)."""
+
+    account_id: UUID
+    code: str
+    name: str
+    dc_type: str  # D/C — expected balance direction
+    is_leaf: bool  # only leaf accounts are directly editable
+    opening_debit: Decimal = Field(default=Decimal("0"), ge=0)
+    opening_credit: Decimal = Field(default=Decimal("0"), ge=0)
+
+
+class OpeningBalancesResponse(BaseModel):
+    """GET /periods/{id}/opening-balances response."""
+
+    period: PeriodSchema
+    editable: bool  # false once the period has posted activity / is closed
+    rows: List[OpeningBalanceRow]
+    total_debit: Decimal
+    total_credit: Decimal
+    is_balanced: bool
+
+
+class OpeningBalanceEntry(BaseModel):
+    """One row in a PUT /periods/{id}/opening-balances request."""
+
+    account_id: UUID
+    opening_debit: Decimal = Field(default=Decimal("0"), ge=0)
+    opening_credit: Decimal = Field(default=Decimal("0"), ge=0)
+
+
+class OpeningBalancesUpdate(BaseModel):
+    """PUT /periods/{id}/opening-balances request body."""
+
+    entries: List[OpeningBalanceEntry] = Field(default_factory=list)
+
+
 class CarryForwardRequest(BaseModel):
     """POST /carry-forward/execute request body."""
 

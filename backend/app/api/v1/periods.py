@@ -31,6 +31,9 @@ from app.schemas.period import (
     AIProceedCheckResponse,
     CarryForwardRequest,
     CarryForwardResponse,
+    OpeningBalanceRow,
+    OpeningBalancesResponse,
+    OpeningBalancesUpdate,
     PeriodCreate,
     PeriodListResponse,
     PeriodSchema,
@@ -407,6 +410,210 @@ async def period_trial_balance_check(
         "total_credit": total_credit,
         "difference": difference,
     }
+
+
+# ── Opening Balances (期初余额录入) — §2.9 ────────────────────
+
+
+async def _load_leaf_account_ids(db: AsyncSession) -> set[UUID]:
+    """Return the set of account ids that are NOT a parent of any account.
+
+    Only leaf accounts carry directly-entered opening balances; parent totals
+    are aggregated from children by the trial-balance report.
+    """
+    from app.models.account import Account as AccountModel
+
+    parent_ids = (
+        await db.execute(
+            select(AccountModel.parent_id).where(AccountModel.parent_id.isnot(None))
+        )
+    ).scalars().all()
+    return set(parent_ids)
+
+
+async def _period_has_activity(db: AsyncSession, period_id: UUID) -> bool:
+    """True if the period already has posted current-period activity."""
+    total = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(AccountBalance.current_debit), 0)
+                + func.coalesce(func.sum(AccountBalance.current_credit), 0)
+            ).where(AccountBalance.period_id == period_id)
+        )
+    ).scalar_one()
+    return Decimal(str(total)) != Decimal("0")
+
+
+@router.get("/{period_id}/opening-balances", response_model=OpeningBalancesResponse)
+async def get_opening_balances(
+    period_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("report:read")),
+) -> OpeningBalancesResponse:
+    """List enabled accounts with their opening balances for entry (§2.9)."""
+    from app.models.account import Account as AccountModel
+
+    period = (
+        await db.execute(select(Period).where(Period.id == period_id))
+    ).scalar_one_or_none()
+    if not period:
+        raise HTTPException(status_code=404, detail="会计期间不存在")
+
+    parent_ids = await _load_leaf_account_ids(db)
+
+    accounts = (
+        await db.execute(
+            select(AccountModel)
+            .where(AccountModel.is_enabled == True)
+            .order_by(AccountModel.code)
+        )
+    ).scalars().all()
+
+    balances = {
+        b.account_id: b
+        for b in (
+            await db.execute(
+                select(AccountBalance).where(AccountBalance.period_id == period_id)
+            )
+        ).scalars().all()
+    }
+
+    rows: list[OpeningBalanceRow] = []
+    total_debit = Decimal("0")
+    total_credit = Decimal("0")
+    for acct in accounts:
+        bal = balances.get(acct.id)
+        od = bal.opening_debit if bal else Decimal("0")
+        oc = bal.opening_credit if bal else Decimal("0")
+        is_leaf = acct.id not in parent_ids
+        if is_leaf:
+            total_debit += od
+            total_credit += oc
+        rows.append(
+            OpeningBalanceRow(
+                account_id=acct.id,
+                code=acct.code,
+                name=acct.name,
+                dc_type=acct.dc_type,
+                is_leaf=is_leaf,
+                opening_debit=od,
+                opening_credit=oc,
+            )
+        )
+
+    editable = period.status == "open" and not await _period_has_activity(db, period_id)
+
+    return OpeningBalancesResponse(
+        period=PeriodSchema.model_validate(period),
+        editable=editable,
+        rows=rows,
+        total_debit=total_debit,
+        total_credit=total_credit,
+        is_balanced=abs(total_debit - total_credit) < Decimal("0.01"),
+    )
+
+
+@router.put("/{period_id}/opening-balances", response_model=OpeningBalancesResponse)
+async def set_opening_balances(
+    period_id: UUID,
+    body: OpeningBalancesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("account:manage")),
+) -> OpeningBalancesResponse:
+    """Bulk upsert opening balances for a period (§2.9).
+
+    Rules: period must be open with no posted activity; each row may only have
+    one side non-zero; only leaf accounts are editable; totals must balance.
+    Sets closing = opening (current is zero at period start).
+    """
+    from app.models.account import Account as AccountModel
+
+    period = (
+        await db.execute(
+            select(Period).where(Period.id == period_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not period:
+        raise HTTPException(status_code=404, detail="会计期间不存在")
+    if period.status != "open":
+        raise HTTPException(status_code=409, detail="会计期间已结账，无法录入期初余额")
+    if await _period_has_activity(db, period_id):
+        raise HTTPException(
+            status_code=409,
+            detail="本期已有记账凭证，期初余额不可再修改",
+        )
+
+    parent_ids = await _load_leaf_account_ids(db)
+    valid_account_ids = {
+        a.id
+        for a in (
+            await db.execute(
+                select(AccountModel).where(AccountModel.is_enabled == True)
+            )
+        ).scalars().all()
+    }
+
+    # 1. Validate rows and compute totals
+    total_debit = Decimal("0")
+    total_credit = Decimal("0")
+    for e in body.entries:
+        if e.opening_debit != 0 and e.opening_credit != 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"科目 {e.account_id} 借贷方不能同时有值",
+            )
+        if e.account_id not in valid_account_ids:
+            raise HTTPException(
+                status_code=400, detail=f"科目 {e.account_id} 不存在或已停用"
+            )
+        if e.account_id in parent_ids and (e.opening_debit or e.opening_credit):
+            raise HTTPException(
+                status_code=400,
+                detail=f"科目 {e.account_id} 为非末级科目，余额由下级汇总，不可直接录入",
+            )
+        total_debit += e.opening_debit
+        total_credit += e.opening_credit
+
+    if abs(total_debit - total_credit) >= Decimal("0.01"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"期初余额借贷不平衡：借方 {total_debit} ≠ 贷方 {total_credit}",
+        )
+
+    # 2. Upsert each entry (closing = opening, current = 0)
+    for e in body.entries:
+        stmt = (
+            insert(AccountBalance)
+            .values(
+                period_id=period_id,
+                account_id=e.account_id,
+                opening_debit=e.opening_debit,
+                opening_credit=e.opening_credit,
+                current_debit=Decimal("0"),
+                current_credit=Decimal("0"),
+                closing_debit=e.opening_debit,
+                closing_credit=e.opening_credit,
+            )
+            .on_conflict_do_update(
+                index_elements=["period_id", "account_id"],
+                set_=dict(
+                    opening_debit=e.opening_debit,
+                    opening_credit=e.opening_credit,
+                    closing_debit=e.opening_debit,
+                    closing_credit=e.opening_credit,
+                ),
+            )
+        )
+        await db.execute(stmt)
+
+    await db.flush()
+
+    # 3. Return the refreshed view
+    return await get_opening_balances(
+        period_id=period_id, db=db, current_user=current_user, _=True
+    )
 
 
 # ── Carry Forward ─────────────────────────────────────────────
