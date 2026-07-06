@@ -14,11 +14,11 @@ services:
       POSTGRES_USER: accounting
       POSTGRES_PASSWORD: accounting
       POSTGRES_DB: core_accounting
-    # No host port published — reachable only on the internal network as
-    # "db:5432". Avoids collisions with other stacks' Postgres on the host.
-    # Need host access (DB GUI)? Uncomment and pick a free port:
-    #   ports:
-    #     - "5433:5432"
+    # Published on a non-default host port so host-side tooling (alembic,
+    # uvicorn, pytest, a DB GUI) can connect, while dodging the default 5432
+    # that other local stacks grab. Container-to-container still uses db:5432.
+    ports:
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -30,8 +30,10 @@ services:
   # ── Redis 7 ────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    # No host port published — reachable only on the internal network as
-    # "redis:6379". Avoids collisions with other stacks' Redis on the host.
+    # Published on a non-default host port (see db note above); dodges the
+    # default 6379 other local stacks grab. Container-to-container uses redis:6379.
+    ports:
+      - "6380:6379"
     volumes:
       - redisdata:/data
     healthcheck:

@@ -15,6 +15,7 @@ Enterprise-grade Chinese accounting system API built with FastAPI.
 ## Prerequisites
 
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (Python package/venv manager)
 - PostgreSQL 15
 - Redis 7
 - (Optional) Docker & Docker Compose
@@ -49,24 +50,26 @@ Edit `.env` and update the key values:
 | `DEEPSEEK_MODEL` | `deepseek-chat` |
 | `DEEPSEEK_FALLBACK_MODEL` | `deepseek-chat` |
 
-### 3. Create a virtual environment and install dependencies
+### 3. Install dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync              # creates .venv and installs from uv.lock
+uv sync --extra dev  # add the test/dev tools (pytest, etc.)
 ```
+
+`uv` manages the virtual environment for you — no manual `venv`/`activate`
+needed. Prefix commands with `uv run` to execute them inside it.
 
 ### 4. Run database migrations
 
 ```bash
-alembic upgrade head
+uv run alembic upgrade head
 ```
 
 ### 5. Start the development server
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
 The API is now live at [http://localhost:8000](http://localhost:8000).
@@ -134,11 +137,11 @@ VALUES (gen_random_uuid(), 'admin', '$2b$12$...', '系统管理员', '<admin_rol
 
 ```bash
 # Create a new migration
-alembic revision --autogenerate -m "description"
+uv run alembic revision --autogenerate -m "description"
 
 # Run tests
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=app
+uv run pytest --cov=app
 ```

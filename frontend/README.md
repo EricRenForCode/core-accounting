@@ -19,8 +19,20 @@ Chinese accounting system UI built with React 19, Vite 8, and TypeScript.
 ## Prerequisites
 
 - Node.js 18+
-- pnpm (recommended)
+- pnpm 9+ (this repo is pnpm-based — a `pnpm-lock.yaml` is committed; do **not** use `npm install`, it corrupts pnpm's `node_modules`)
 - Backend running at `http://localhost:8000`
+
+### Getting pnpm (via Corepack)
+
+You don't need a separate pnpm install — Corepack ships with Node and manages it:
+
+```bash
+corepack enable          # one-time; symlinks pnpm into PATH (use sudo if Node is system-wide)
+```
+
+If you'd rather not enable it globally, prefix any command with `corepack`
+(e.g. `corepack pnpm install`, `corepack pnpm dev`) — it works without `corepack enable`.
+As a fallback, the standalone installer also works: `curl -fsSL https://get.pnpm.io/install.sh | sh -`.
 
 ## Quick Start
 
@@ -28,7 +40,7 @@ Chinese accounting system UI built with React 19, Vite 8, and TypeScript.
 
 ```bash
 cd frontend
-pnpm install
+pnpm install          # or: corepack pnpm install
 ```
 
 ### 2. Start the development server
@@ -89,6 +101,9 @@ frontend/
 ```
 
 ## Available Scripts
+
+> If pnpm isn't on your PATH, prefix any command below with `corepack`
+> (e.g. `corepack pnpm dev`, `corepack pnpm build`, `corepack pnpm test`).
 
 | Command | Description |
 |---|---|
