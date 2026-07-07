@@ -118,6 +118,8 @@ async def get_account_tree(
     # 2. Build lookup dict: id → AccountTreeNode
     node_map: dict[UUID, AccountTreeNode] = {}
     for a in all_accounts:
+        # bool(...) guards: legacy rows seeded before these flags existed
+        # carry NULLs, which the response schema (bool) rejects with a 500.
         node_map[a.id] = AccountTreeNode(
             id=a.id,
             code=a.code,
@@ -126,11 +128,11 @@ async def get_account_tree(
             level=a.level,
             type=a.type,
             dc_type=a.dc_type,
-            is_cash=a.is_cash,
+            is_cash=bool(a.is_cash),
             aux_types=a.aux_types or [],
-            is_quantity=a.is_quantity,
+            is_quantity=bool(a.is_quantity),
             quantity_unit=a.quantity_unit,
-            is_enabled=a.is_enabled,
+            is_enabled=bool(a.is_enabled),
         )
 
     # 3. Attach children to parents; roots have parent_id IS NULL
