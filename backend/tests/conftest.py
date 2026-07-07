@@ -10,10 +10,16 @@ PostgreSQL types (JSONB, INET, UUID) are compiled to SQLite equivalents.
 SQLite limitations: no SELECT FOR UPDATE support (post/reverse tests xfail).
 """
 
+import os
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import AsyncGenerator, Optional
+
+# Disable the Redis cache layer for the entire suite BEFORE app modules
+# import — a live local Redis would otherwise leak cached responses
+# (account trees, trial balances) across tests with fresh in-memory DBs.
+os.environ["CACHE_ENABLED"] = "false"
 
 import pytest
 import pytest_asyncio

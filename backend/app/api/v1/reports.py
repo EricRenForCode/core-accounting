@@ -62,9 +62,19 @@ async def trial_balance(
     _: bool = Depends(require_permission("report:read")),
 ) -> TrialBalanceResponse:
     """科目余额表 — trial balance with tree structure (§7.2)."""
+    from app.core.cache import TRIAL_BALANCE_TTL, cache_get_json, cache_set_json
     from app.models.period import AccountBalance, Period
     from app.models.account import Account as AccountModel
     from app.schemas.report import TrialBalanceRow, TrialBalanceSummary
+
+    # 0. Cache lookup. Normalize params: report_interpreter calls this
+    # function directly, so `level`/`include_zero` may be Query defaults.
+    level_key = level if isinstance(level, int) else "all"
+    zero_key = include_zero if isinstance(include_zero, bool) else False
+    cache_key = f"trial-balance:{period_id}:{level_key}:{zero_key}"
+    cached = await cache_get_json(cache_key)
+    if cached is not None:
+        return TrialBalanceResponse.model_validate(cached)
 
     # 1. Get period info
     period_result = await db.execute(
@@ -180,11 +190,16 @@ async def trial_balance(
         total_closing_credit=_sum(lambda r: r.closing_credit),
     )
 
-    return TrialBalanceResponse(
+    response = TrialBalanceResponse(
         period={"year": period.year, "month": period.month},
         rows=rows,
         summary=summary,
     )
+    # Cache the JSON-safe dump; invalidated on posting, TTL as backstop.
+    await cache_set_json(
+        cache_key, response.model_dump(mode="json"), TRIAL_BALANCE_TTL
+    )
+    return response
 
 
 def _has_balance(row) -> bool:
