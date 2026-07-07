@@ -14,6 +14,13 @@
 - 已修真实 bug:记账崩溃、审核/记账/冲销 MissingGreenlet、审计 date/Decimal、校验 422、AccountPicker 崩溃、利润表两列。
 - 代码在分支 `fix/mvp-voucher-reports-dashboard`(未合并 master)。
 
+### 2026-07-08 进展快照（分支 `feat/p3-p6-hardening`,5 commits）
+
+- **P0–P1 已全清**(见下),本轮完成 **P3/P4/P5 核心项 + P6 三项**,明细见各节勾选与说明。
+- 测试基线:后端 **101 通过 / 0 失败**(xfail 1、xpass 4),前端 **19 通过** + `tsc -b`/`vite build` 绿;新增 CI 工作流。
+- **端到端 live 验证**(Postgres 5433 + Redis 6380 + uvicorn 8002 + vite 5173):登录 → 建期间(2026-07)→ 录凭证 JZ-2026-07-001(¥800)→ 双人审核(制单人自审被正确拒绝)→ 记账 → 试算平衡 800/800 → 利润表净利 -800;缓存 key 记账时实际失效;审计 old_values 落库;限流计数在 Redis 递增。
+- 验证用数据:admin/admin123;新增 `auditor1/auditor123`(finance_manager,双签验证用,可删);测试凭证 JZ-2026-07-001 已记账(period 2026-07)。
+
 ---
 
 ## P0 — 正确性收尾（先清这些，风险最高 / 投入最小）🔴
@@ -73,7 +80,7 @@
 
 > 后端已实现四大功能 + NL 查询安全(sqlparse 仅 SELECT、强制 LIMIT 1000、ai_readonly 只读库、5s `statement_timeout`)。主要差「配 key + 实测 + 前端补全」。
 
-- [ ] 配置 `OPENAI_API_KEY` 后端到端实测:智能凭证生成/修正、报表解读、期末检查、NL 查询 + 解释。
+- [ ] 后端到端实测:智能凭证生成/修正、报表解读、期末检查、NL 查询 + 解释。(2026-07-08 更新:`DEEPSEEK_API_KEY` **已在 `.env` 配置且真实调通**——测试套件实际命中 DeepSeek,NL→SQL 生成了合法 PostgreSQL;缺的是四大功能的 UI 级端到端实测。)
 - [ ] 智能凭证:校验「科目必须存在 → 借贷平衡 → 不平自动修正(≤1 次)」实际生效(§7.3)。
 - [ ] NL 查询:`conversation_id` 连续追问、执行耗时、SQL 可展开。
 - [ ] 前端缺口:`AIChatPanel`(右下角全局悬浮面板)、独立 `AIPeriodChecker` 页(目前期末检查并入 PeriodClose)。
@@ -81,56 +88,64 @@
 
 ---
 
-## P3 — 测试与质量（spec §8）🟡
+## P3 — 测试与质量（spec §8）🟡（2026-07-08 大部分完成,分支 `feat/p3-p6-hardening`）
 
-- [ ] 修复 AI 余下 5 个测试(配 key 后)→ 后端全绿。
-- [ ] 后端覆盖率达标:services ≥ 80%、API ≥ 70%(目前未测覆盖率)。
-- [ ] Playwright e2e(spec §8 前端):`voucher-flow`(录入→审核→记账→查询)、`ledger-flow`、`period-close`、`ai-voucher`。
-- [ ] 前端组件/hook 测试补充(VoucherForm 交互、useVouchers)。
-- [ ] CI 流水线:PR 触发 `pytest` + `tsc -b` + `vitest` + e2e。
-- [ ] 回归:把本轮修的真实 bug 各补一条针对性测试(记账 tz、序列化、MissingGreenlet)。
-
----
-
-## P4 — 性能与基础设施（spec §2.15 / §4 / §7）🟢
-
-- [ ] **索引核对**(§2.15):逐条确认 DDL 索引已建(凭证 period/status/date、分录 account、审计 created/resource、余额 period+account 唯一等)。
-- [ ] **Redis 缓存真实落地**:目前 `trial-balance` 失效为 best-effort no-op;接真 Redis(科目树 5min stale、试算平衡缓存 + 记账后失效)。
-- [ ] **Celery 异步任务**:`app/tasks/` 仅有空包;把批量折旧、期末结转执行等长任务改异步(prod compose 已留 celery worker);进度回传前端。
-- [ ] API 响应 P95 < 200ms(不含 AI):对账表/报表做 `EXPLAIN ANALYZE` 慢查询分析。
-- [ ] 大数据量分页/虚拟滚动(凭证列表、明细账)。
+- [x] 修复 AI 余下 3 个测试 → 后端全绿(**101 通过 / 0 失败**)。全部按产品 bug 修,非改测试:
+  - `/ai/voucher/generate` 期间不存在时先 404 再调 LLM(原先白白消耗 token 后 502);
+  - NL 查询执行 LLM 生成的 SQL 增加异常处理 → 干净 502 + 回滚(原先未处理异常且污染连接,导致后续请求 401);
+  - 测试夹具改为 commit(原 flush-only 数据会被错误路径的 rollback 抹掉,表现为间歇 401)。
+- [ ] 后端覆盖率达标:**已测得 45%**(services ≥80% 目标不适用——`app/services` 是空包,逻辑在 api/v1;API 模块 12–78% 不等)。达标仍待补测试。
+- [ ] Playwright e2e:未做(本轮以 curl 实测了完整凭证流水线:录入→双人审核→记账→账表勾稽,见 P4/P5 验证记录)。
+- [x] 前端组件测试:修复 VoucherForm 测试套件(vi.mock 提升 bug 导致 0 条运行、断言全是恒真 `>=0`)→ 19 通过且真实断言。`useVouchers` hook 测试仍缺。
+- [x] CI 流水线:`.github/workflows/ci.yml` — PR/push 触发后端 `uv run pytest` + 前端 `pnpm tsc -b + vitest + build`(CI 无 DEEPSEEK key,AI 测试按设计容忍 502)。e2e 未纳入。
+- [x] 回归测试(`tests/unit/test_regressions.py` 等 12 条新增):审计 Decimal/date/UUID 序列化、datetime-是-date 陷阱、NL 查询坏 SQL、404-不调-LLM、审计 old_values、限流、缓存降级。
+- [x] 附带修复:audit 监听器改为幂等 + `AuditLog` BIGINT 主键加 sqlite 变体 → **审计路径首次在测试中被真实执行**(原先 lifespan 不跑,监听器从未装上)。
 
 ---
 
-## P5 — 安全加固 🟢
+## P4 — 性能与基础设施（spec §2.15 / §4 / §7）🟢（2026-07-08 核心项完成）
 
-- [ ] **限流中间件**:目前只有 CORS / CorrelationID / AuditContext,无 rate limit(spec §4 提及)。给登录、AI、写接口加限流。
-- [ ] 审计日志补 `old_values`(目前 after_flush 只记 new_values;UPDATE 拿不到旧值,§2.12 设计有 old/new 对比)。
-- [ ] 密码策略(强度/改密/锁定)、JWT_SECRET 走密管、HTTPS(nginx 已在,补证书/HSTS)。
-- [ ] 权限矩阵端到端核对(§2.10 的 23 项权限是否都在接口 `require_permission` 落地)。
-- [ ] 闲置登出已做 ✅;可选:多标签页同步登出、绝对会话上限提示。
+- [x] **索引核对**(§2.15):已逐条对照**运行中 Postgres** 确认全部存在——凭证 period_status/date/status_date、分录 account/voucher/account_voucher、审计 created/resource/user_created、余额 period+account 唯一(`voucher_no` 由唯一约束索引覆盖,等价)。
+- [x] **Redis 缓存真实落地**(`app/core/cache.py`):JSON 缓存助手,任何 Redis 故障降级为 miss/no-op,`CACHE_ENABLED=false` 供测试关闭。
+  - 试算平衡:按 (period, level, include_zero) 缓存 10min,**记账时失效**(替换原 no-op stub);
+  - 科目树:缓存 5min,科目增删改时失效;
+  - 实测:tree 89ms→3.5ms(25×);记账后 `trial-balance:*` key 实际消失(live 验证)。
+- [ ] **Celery 异步任务**:未做(`app/tasks/` 仍空包)。本轮明确降级——无长任务瓶颈证据前不做。
+- [ ] API P95 / `EXPLAIN ANALYZE` 慢查询分析:未做。
+- [x] 分页现状核实:凭证列表已有分页;明细账/序时账按单期间天然有界(带余额滚动列的账页无法简单分页),MVP 规模下判定够用——大数据量虚拟滚动留待有真实数据量再做。
 
 ---
 
-## P6 — 功能 / UX 完善 🟢
+## P5 — 安全加固 🟢（2026-07-08 核心项完成）
 
-- [ ] 利润表「上期对比」列:需有上一期间数据才显差异;补「上年同期」对比口径(spec §3.7 本期/本年累计已对)。
-- [ ] 凭证模板「生成凭证」预填(从模板带入分录到录入页)。
-- [ ] 银行对账 UX:自动匹配结果可手工调整、余额调节表打印。
-- [ ] 固定资产:折旧计划表预览、批量折旧进度、卡片变更历史。
-- [ ] 辅助核算:明细账 + 账龄分析前端页打磨(后端已实现)。
-- [ ] 多栏明细账动态列前端体验;数量金额账单价显示。
-- [ ] 全局:键盘流(凭证录入快捷键已部分)、打印样式、空状态/错误态统一。
+- [x] **限流中间件**(`app/core/ratelimit.py`):固定窗口按 IP——登录 10/min、AI 30/min、写接口 240/min(env 可调);Redis 计数(跨 worker),不可用时进程内降级;429 走标准错误信封;`RATE_LIMIT_ENABLED=false` 供测试。实测 Redis 中 `ratelimit:login/write:*` 计数在真实请求下递增;登录连错 e2e 测试拿到 429。
+- [x] 审计日志补 `old_values`:after_flush 中用 attribute history(在 after_flush_postexec 前仍完整)取变更列旧值,只记变更列(兼作 change set)。**live 验证**:凭证 draft→audited→posted 两次 UPDATE 均带 old_values。
+- [ ] 密码策略(强度/改密/锁定)、JWT_SECRET 走密管、HTTPS 证书/HSTS:未做。
+- [x] 权限矩阵核对:逐模块统计 routes vs `require_permission`,补上两个真实缺口——**凭证模板 5 个路由原先零权限校验**(现要求 `voucher:create`)、凭证导出补 `report:export`。凭证 list/get 保持仅登录(所有种子角色均有凭证读能力,属有意决策)。auth/health 天然开放、dashboard 仅登录,合理。
+- [ ] 可选项(多标签页同步登出、绝对会话上限):未做。⚠️ P0.2 遗留的产品决策(活跃用户永不强制重登 vs 绝对 24h)仍待拍板。
+
+---
+
+## P6 — 功能 / UX 完善 🟢（2026-07-08 完成 3 项）
+
+- [x] 利润表「上期金额」对比列:后端按 (year, month-1)(跨年取 12 月)查上期余额,逐行/小计/合计计算上期净额,无上期时字段省略;前端条件渲染该列。「上年同期」口径仍未做。
+- [x] 凭证模板「生成凭证」预填:原按钮只跳转不预填(死一半的功能)。VoucherForm 现读取 `?templateId=`,拉取模板 + 科目表,预填科目/方向/摘要并解析 code/name/辅助核算类型,**金额留空由用户填**;模板加载失败降级为空白凭证。
+- [ ] 银行对账 UX:未做。
+- [ ] 固定资产(折旧计划预览/批量折旧进度/卡片变更历史):未做。
+- [ ] 辅助核算前端页打磨:未做。
+- [x] 数量金额账单价显示:后端返回分录**录入的单价**(`unit_price_in/out`,无单价时按金额÷数量兜底),前端优先显示录入单价(原先只能前端反算)。多栏明细账动态列仍未做。
+- [ ] 全局键盘流/打印样式/空状态统一:未做。
+- [x] 附带修复(live 实测发现的存量 bug):旧种子科目行 `is_quantity/is_cash/aux_types` 为 NULL,导致 `GET /accounts` 与 `/accounts/tree` 直接 500——schema 加 before-validator 容忍 NULL + 端点 bool() 防御 + 存量数据 SQL 回填。
 
 ---
 
 ## P7 — 部署与运维 🟢
 
-- [ ] Alembic 迁移核对:确保模型变更(如本轮 `posted_at` tz)有对应迁移;首部署 `alembic upgrade head` 流程。
-- [ ] 生产 compose 实跑验证(Nginx + FastAPI + Celery + DB + Redis);健康检查/重启策略。
+- [ ] Alembic 迁移核对:确保模型变更(如本轮 `posted_at` tz)有对应迁移;首部署 `alembic upgrade head` 流程。⚠️ 本轮新增注意:线上/其他环境的存量科目 NULL 布尔列需要回填迁移(本地已手工 `UPDATE`,schema 层已容错,但建议补一条 data migration 固化)。
+- [ ] 生产 compose 实跑验证(Nginx + FastAPI + Celery + DB + Redis);健康检查/重启策略。(开发 compose 的 db/redis 已实跑验证 ✅)
 - [ ] 数据库备份/恢复脚本验证(`backups/` 目录已在,内容待核)。
 - [ ] 日志/监控:结构化日志(已有 CorrelationID)、错误上报、基础指标。
-- [ ] 代码分支合并:`fix/mvp-voucher-reports-dashboard` → master(评审后)。
+- [ ] 代码分支合并:**`feat/p3-p6-hardening` → master(评审后,5 commits,含 CI)**。
 
 ---
 
@@ -144,12 +159,14 @@
 
 ## 🎯 建议执行顺序（最小代价 → 最大价值）
 
-1. **P0 全清**(AI Decimal、refresh 前后端、4 张账表页、seed/登录)——半天到一天,清掉所有「看起来坏了」。
-2. **P1.1 + P1.2**(建账引导 + .env.prod)——让非技术用户能从零开账套。
-3. **P2 配 key 实测 AI** + **P3 修 AI 测试**——后端全绿、AI 可用。
-4. **P1.3 报表导出** + **P6 关键 UX**——交付感。
-5. **P4 性能 / P5 安全 / P7 部署**——上线前硬化。
-6. **P3 e2e + CI / P8 文档**——可持续维护。
+1. ~~**P0 全清**~~ ✅
+2. ~~**P1.1 + P1.2**(建账引导 + .env.prod)~~ ✅
+3. **P2 前端补全 + AI 全功能实测**——key 已配好(DEEPSEEK,测试已真实调通 NL→SQL);剩 `AIChatPanel`、`AIPeriodChecker` 页与四大功能 UI 端到端。~~P3 修 AI 测试~~ ✅
+4. ~~**P1.3 报表导出**~~ ✅ + **P6 剩余 UX**(银行对账/固定资产/辅助核算/键盘流,已完成 3 项)。
+5. ~~P4 缓存与索引 / P5 限流·审计·权限~~ ✅;剩:**Celery、P95 分析、密码策略/HSTS、P7 部署验证**——上线前硬化。
+6. **P3 e2e(Playwright)+ 覆盖率达标** / **P8 文档**——可持续维护。~~CI~~ ✅
+
+> 下一轮最短路径:合并 `feat/p3-p6-hardening` → P8 使用手册 + P7 生产 compose 实跑 → Playwright e2e 四条主流程。
 
 ---
 
