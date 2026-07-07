@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { AccountPicker, type SelectedAccount } from '@/components/AccountPicker'
@@ -55,6 +55,7 @@ interface CurrentPeriod {
 export default function VoucherForm() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const search = useSearch({ strict: false }) as { templateId?: string }
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [attachments, setAttachments] = useState(0)
   const [entries, setEntries] = useState<EntryRow[]>([emptyRow(), emptyRow()])
@@ -79,6 +80,42 @@ export default function VoucherForm() {
       .catch(() => { /* no period open */ })
       .finally(() => setPeriodLoading(false))
   }, [])
+
+  // Prefill entries from a voucher template (模板生成凭证 — P6)
+  useEffect(() => {
+    const templateId = search?.templateId
+    if (!templateId) return
+    Promise.all([
+      api.get(`/voucher-templates/${templateId}`),
+      api.get('/accounts', { params: { page_size: 500, is_enabled: true } }),
+    ])
+      .then(([tRes, aRes]) => {
+        const byId = new Map<string, { code: string; name: string; aux_types: string[] | null }>(
+          (aRes.data.accounts ?? []).map(
+            (a: { id: string; code: string; name: string; aux_types: string[] | null }) => [a.id, a],
+          ),
+        )
+        const rows: EntryRow[] = (tRes.data.entries ?? []).map(
+          (e: { account_id: string; summary?: string; dc_side?: string }) => {
+            const acct = byId.get(e.account_id)
+            return {
+              ...emptyRow(),
+              accountId: e.account_id,
+              accountCode: acct?.code ?? '',
+              accountName: acct?.name ?? '',
+              auxTypes: acct?.aux_types ?? [],
+              summary: e.summary ?? '',
+              // Amounts intentionally left blank — the template fixes the
+              // structure (accounts + direction); the user fills amounts.
+            }
+          },
+        )
+        if (rows.length > 0) {
+          setEntries(rows.length >= 2 ? rows : [...rows, emptyRow()])
+        }
+      })
+      .catch(() => setError('模板加载失败，已打开空白凭证'))
+  }, [search?.templateId])
 
   // Calculate totals
   const totalDebit = entries.reduce((sum, e) => sum + (parseFloat(e.debitAmount) || 0), 0)

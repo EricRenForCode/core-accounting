@@ -23,10 +23,10 @@ const mockApi = vi.hoisted(() => ({
 
 vi.mock('@/lib/api', () => ({ default: mockApi }))
 
-// Mock router navigation — VoucherForm calls useNavigate()
+// Mock router hooks — VoucherForm calls useNavigate() and useSearch()
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
-  return { ...actual, useNavigate: () => vi.fn() }
+  return { ...actual, useNavigate: () => vi.fn(), useSearch: () => ({}) }
 })
 
 // Mock stores

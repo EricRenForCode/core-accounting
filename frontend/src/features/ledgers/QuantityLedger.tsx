@@ -14,6 +14,10 @@ interface QuantityLedgerRow {
   amount_out: number
   quantity_balance: number
   amount_balance: number
+  // Recorded unit price from the voucher entry (backend falls back to
+  // amount/quantity when no explicit price was recorded)
+  unit_price_in?: number | null
+  unit_price_out?: number | null
 }
 
 interface QuantityLedgerData {
@@ -271,9 +275,11 @@ export default function QuantityLedger() {
                       {fmtQty(row.quantity_in)}
                     </td>
                     <td className="px-2 py-2 text-right text-sm text-muted-foreground">
-                      {row.quantity_in > 0 && row.amount_in > 0
-                        ? (row.amount_in / row.quantity_in).toFixed(4)
-                        : ''}
+                      {row.unit_price_in != null
+                        ? Number(row.unit_price_in).toFixed(4)
+                        : row.quantity_in > 0 && row.amount_in > 0
+                          ? (row.amount_in / row.quantity_in).toFixed(4)
+                          : ''}
                     </td>
                     <td className="px-2 py-2 text-right text-sm font-mono">
                       {fmt(row.amount_in)}
@@ -282,9 +288,11 @@ export default function QuantityLedger() {
                       {fmtQty(row.quantity_out)}
                     </td>
                     <td className="px-2 py-2 text-right text-sm text-muted-foreground">
-                      {row.quantity_out > 0 && row.amount_out > 0
-                        ? (row.amount_out / row.quantity_out).toFixed(4)
-                        : ''}
+                      {row.unit_price_out != null
+                        ? Number(row.unit_price_out).toFixed(4)
+                        : row.quantity_out > 0 && row.amount_out > 0
+                          ? (row.amount_out / row.quantity_out).toFixed(4)
+                          : ''}
                     </td>
                     <td className="px-2 py-2 text-right text-sm font-mono">
                       {fmt(row.amount_out)}

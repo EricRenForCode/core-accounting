@@ -743,6 +743,15 @@ async def quantity_ledger(
         qty_bal = qty_bal + qty_in - qty_out
         amt_bal = amt_bal + amt_in - amt_out
 
+        # Unit price: prefer the recorded entry price; derive amount/qty
+        # as fallback (P6 — 数量金额账单价显示).
+        def _unit_price(amount: Decimal, quantity: Decimal) -> Decimal | None:
+            if price > 0:
+                return price
+            if quantity > 0 and amount > 0:
+                return (amount / quantity).quantize(Decimal("0.0001"))
+            return None
+
         rows.append(QuantityLedgerRow(
             date=voucher.date,
             voucher_no=voucher.voucher_no,
@@ -753,6 +762,8 @@ async def quantity_ledger(
             amount_out=amt_out,
             quantity_balance=qty_bal,
             amount_balance=amt_bal,
+            unit_price_in=_unit_price(amt_in, qty_in) if qty_in > 0 else None,
+            unit_price_out=_unit_price(amt_out, qty_out) if qty_out > 0 else None,
         ))
 
     return QuantityLedgerResponse(
@@ -1081,6 +1092,30 @@ async def income_statement(
     for acct, bal in rows:
         balance_map[str(acct.id)] = (acct, bal)
 
+    # 2b. Prior period balances (上期对比列, P6) — None if no prior period.
+    if period.month == 1:
+        prior_year, prior_month = period.year - 1, 12
+    else:
+        prior_year, prior_month = period.year, period.month - 1
+    prior_period = (
+        await db.execute(
+            select(Period).where(
+                Period.year == prior_year, Period.month == prior_month
+            )
+        )
+    ).scalar_one_or_none()
+    prior_bal_map: dict[str, AccountBalance] = {}
+    if prior_period is not None:
+        prior_rows = await db.execute(
+            select(AccountBalance).where(
+                AccountBalance.period_id == prior_period.id
+            )
+        )
+        prior_bal_map = {
+            str(b.account_id): b for b in prior_rows.scalars().all()
+        }
+    has_prior = prior_period is not None
+
     assigned_ids: set[str] = set()
 
     # 3. 本期金额 (current period only) — this period's activity (current_*).
@@ -1217,18 +1252,22 @@ async def income_statement(
     result_sections: list[StatementSection] = []
     running_total_current = Decimal("0")
     running_total_cumulative = Decimal("0")
+    running_total_prior = Decimal("0")
     # Stage totals for key subtotals
     revenue_total = Decimal("0")
     revenue_cumulative = Decimal("0")
+    revenue_prior = Decimal("0")
 
     for tmpl_section in income_template:
         section_items: list[StatementItem] = []
         section_current = Decimal("0")
         section_cumulative = Decimal("0")
+        section_prior = Decimal("0")
 
         for item_def in tmpl_section["items"]:
             item_current = Decimal("0")
             item_cumulative = Decimal("0")
+            item_prior = Decimal("0")
             prefixes = item_def.get("prefixes", [])
             catch_all = item_def.get("catch_all")
             sign = item_def.get("sign", 1)
@@ -1242,6 +1281,7 @@ async def income_statement(
                         cum = _cumulative_amount(acct, bal)
                         item_current += amt
                         item_cumulative += cum
+                        item_prior += _net_amount(acct, prior_bal_map.get(aid))
                         assigned_ids.add(aid)
             elif catch_all:
                 for aid, (acct, bal) in balance_map.items():
@@ -1255,36 +1295,45 @@ async def income_statement(
                     cum = _cumulative_amount(acct, bal)
                     item_current += amt
                     item_cumulative += cum
+                    item_prior += _net_amount(acct, prior_bal_map.get(aid))
                     assigned_ids.add(aid)
 
             # Apply sign: revenue items already positive, expense items already negative
             # sign indicates whether this is an add(+) or subtract(-) line in the P&L
             display_current = item_current * sign if sign == 1 else abs(item_current) * sign
             display_cumulative = item_cumulative * sign if sign == 1 else abs(item_cumulative) * sign
+            display_prior = item_prior * sign if sign == 1 else abs(item_prior) * sign
 
             section_items.append(StatementItem(
                 name=item_def["name"],
                 closing=display_current,
                 opening=display_cumulative,
+                prior=display_prior if has_prior else None,
             ))
             section_current += display_current
             section_cumulative += display_cumulative
+            section_prior += display_prior
 
         running_total_current += section_current
         running_total_cumulative += section_cumulative
+        running_total_prior += section_prior
 
         # Track revenue subtotal for display
         if tmpl_section["label"] == "一、营业收入":
             revenue_total = section_current
             revenue_cumulative = section_cumulative
+            revenue_prior = section_prior
 
+        subtotal = {
+            "closing": str(section_current),
+            "opening": str(section_cumulative),
+        }
+        if has_prior:
+            subtotal["prior"] = str(section_prior)
         result_sections.append(StatementSection(
             label=tmpl_section["label"],
             items=section_items,
-            subtotal={
-                "closing": str(section_current),
-                "opening": str(section_cumulative),
-            },
+            subtotal=subtotal,
         ))
 
     # 6. Compute key totals: 营业利润, 利润总额, 净利润
@@ -1318,6 +1367,16 @@ async def income_statement(
             "opening": str(net_profit_cumulative),
         },
     }
+    if has_prior:
+        totals["revenue"]["prior"] = str(revenue_prior)
+        totals["operating_profit"]["prior"] = str(
+            revenue_prior
+            + sum(
+                Decimal(s.subtotal["prior"]) for s in result_sections
+                if "营业成本" in s.label and "prior" in s.subtotal
+            )
+        )
+        totals["net_profit"]["prior"] = str(running_total_prior)
 
     return IncomeStatementResponse(
         period={"year": period.year, "month": period.month},

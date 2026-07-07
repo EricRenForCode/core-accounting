@@ -137,6 +137,10 @@ class QuantityLedgerRow(BaseModel):
     amount_out: Decimal
     quantity_balance: Decimal
     amount_balance: Decimal
+    # Recorded unit price from the voucher entry (falls back to
+    # amount/quantity when the entry has no explicit price) — P6.
+    unit_price_in: Optional[Decimal] = None
+    unit_price_out: Optional[Decimal] = None
 
 
 class QuantityLedgerResponse(BaseModel):
@@ -194,6 +198,9 @@ class StatementItem(BaseModel):
     code: Optional[str] = None
     closing: Decimal = Decimal("0")
     opening: Decimal = Decimal("0")
+    # 上期金额 (prior-period amount) — only populated by the income
+    # statement when the previous period exists (P6 对比列).
+    prior: Optional[Decimal] = None
 
 
 class StatementSection(BaseModel):
