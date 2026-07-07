@@ -84,6 +84,11 @@ app.add_middleware(
     expose_headers=["X-Correlation-ID"],
 )
 
+# ── Rate Limiting Middleware (§4 / P5) ────────────────────────
+from app.core.ratelimit import RateLimitMiddleware
+
+app.add_middleware(RateLimitMiddleware)
+
 # ── Correlation ID Middleware ─────────────────────────────────
 app.add_middleware(CorrelationIDMiddleware)
 

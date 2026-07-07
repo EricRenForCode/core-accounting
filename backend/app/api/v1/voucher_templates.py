@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_permission
 from app.models.user import User
 from app.models.voucher import VoucherTemplate
 from app.models.account import Account
@@ -53,6 +53,7 @@ async def list_templates(
     is_enabled: bool = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("voucher:create")),
 ) -> PaginatedResponse[VoucherTemplateResponse]:
     """List voucher templates with optional enabled filter."""
     query = select(VoucherTemplate)
@@ -86,6 +87,7 @@ async def create_template(
     body: CreateTemplateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("voucher:create")),
 ) -> VoucherTemplateResponse:
     """Create a new voucher template with pre-defined entries."""
     # Validate all account_ids exist
@@ -140,6 +142,7 @@ async def get_template(
     template_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("voucher:create")),
 ) -> VoucherTemplateResponse:
     """Get template detail by ID."""
     result = await db.execute(
@@ -157,6 +160,7 @@ async def update_template(
     body: UpdateTemplateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("voucher:create")),
 ) -> VoucherTemplateResponse:
     """Update template fields. Only provided fields are patched."""
     result = await db.execute(
@@ -219,6 +223,7 @@ async def delete_template(
     template_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("voucher:create")),
 ) -> dict:
     """Delete a voucher template."""
     result = await db.execute(

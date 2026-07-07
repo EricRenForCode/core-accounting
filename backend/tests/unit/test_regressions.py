@@ -63,6 +63,52 @@ def test_audit_serialize_datetime_before_date():
     assert data["date"] == "2026-07-08"
 
 
+# ── Audit UPDATE captures old_values (§2.12) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_audit_update_captures_old_values(async_session):
+    """UPDATE on a tracked model must record the pre-change values."""
+    from sqlalchemy import select
+
+    from app.core.audit import install_audit_listeners
+    from app.models.account import Account
+    from app.models.audit import AuditLog
+
+    # Listeners normally install during app lifespan, which ASGITransport
+    # tests never run — install explicitly (idempotent).
+    install_audit_listeners()
+
+    acct = Account(
+        id=uuid.uuid4(),
+        code="9901",
+        name="旧名称",
+        level=1,
+        type="asset",
+        dc_type="D",
+        is_enabled=True,
+    )
+    async_session.add(acct)
+    await async_session.commit()
+
+    acct.name = "新名称"
+    await async_session.commit()
+
+    result = await async_session.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.resource_type == "accounts",
+            AuditLog.action == "UPDATE",
+        )
+        .order_by(AuditLog.created_at.desc())
+    )
+    log = result.scalars().first()
+    assert log is not None
+    assert log.old_values is not None
+    assert log.old_values.get("name") == "旧名称"
+    assert log.new_values.get("name") == "新名称"
+
+
 # ── NL query: runtime SQL failure → clean AI error ────────────
 
 

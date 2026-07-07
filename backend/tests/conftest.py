@@ -20,6 +20,8 @@ from typing import AsyncGenerator, Optional
 # import — a live local Redis would otherwise leak cached responses
 # (account trees, trial balances) across tests with fresh in-memory DBs.
 os.environ["CACHE_ENABLED"] = "false"
+# Rate limiting off by default in tests (dedicated tests re-enable it).
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 import pytest
 import pytest_asyncio

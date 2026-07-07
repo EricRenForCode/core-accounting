@@ -1131,6 +1131,7 @@ async def export_vouchers(
     params: ExportVoucherRequest = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("report:export")),
 ):
     """Export vouchers to Excel (same filter params as list).
 
