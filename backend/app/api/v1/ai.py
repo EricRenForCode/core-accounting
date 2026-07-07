@@ -50,6 +50,13 @@ async def generate_voucher(
 ) -> AIVoucherResponse:
     """Generate voucher entries from natural language description (§7.3)."""
     from app.ai.voucher_generator import generate_voucher_from_description
+    from app.models.period import Period
+
+    # Validate the period exists BEFORE any LLM call (404 early, no tokens spent).
+    period = await db.get(Period, body.period_id)
+    if period is None:
+        raise HTTPException(status_code=404, detail="会计期间不存在")
+
     return await generate_voucher_from_description(
         description=body.description,
         period_id=body.period_id,

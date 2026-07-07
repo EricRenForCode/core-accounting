@@ -6,10 +6,15 @@ import uuid as _uuid
 
 import sqlparse
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.llm_client import invoke_structured
-from app.core.errors import AIInvalidResponseError, ReadOnlyViolationError
+from app.core.errors import (
+    AIGenerationFailedError,
+    AIInvalidResponseError,
+    ReadOnlyViolationError,
+)
 from app.schemas.period import AIQueryResponse
 
 
@@ -133,9 +138,19 @@ Instructions:
     # 4. Validate SQL (CRITICAL SECURITY)
     sql = validate_readonly_sql(sql)
 
-    # 5. Execute on ai_readonly DB
+    # 5. Execute on ai_readonly DB. LLM-generated SQL can always fail at
+    # runtime (bad column, dialect mismatch, timeout) — surface a clean
+    # AI error instead of an unhandled 500.
     start_time = time.monotonic()
-    result = await ai_db.execute(text(sql))
+    try:
+        result = await ai_db.execute(text(sql))
+    except SQLAlchemyError as e:
+        # Leave the session clean — a failed statement otherwise poisons
+        # the connection's transaction for subsequent requests.
+        await ai_db.rollback()
+        raise AIGenerationFailedError(
+            f"生成的 SQL 执行失败: {type(e).__name__}"
+        ) from e
     elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
     columns = list(result.keys())
