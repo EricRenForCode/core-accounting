@@ -9,21 +9,7 @@ import {
   Loader2,
   PlayCircle,
 } from 'lucide-react'
-import type { Period } from '@/types/period'
-
-interface CheckItem {
-  id: number
-  name: string
-  status: 'pass' | 'warn' | 'fail'
-  detail: string
-}
-
-interface PeriodCheckResult {
-  period_id: string
-  checks: CheckItem[]
-  summary: string
-  can_close: boolean
-}
+import type { Period, PeriodCheckResponse } from '@/types/period'
 
 const STATUS_META = {
   pass: { icon: CheckCircle, cls: 'text-green-600 bg-green-50', label: '通过' },
@@ -34,7 +20,7 @@ const STATUS_META = {
 export default function AIPeriodCheckerPage() {
   const navigate = useNavigate()
   const [periodId, setPeriodId] = useState('')
-  const [result, setResult] = useState<PeriodCheckResult | null>(null)
+  const [result, setResult] = useState<PeriodCheckResponse | null>(null)
   const [error, setError] = useState('')
 
   const { data: periodsData } = useQuery<{ periods: Period[] }>({
@@ -55,7 +41,7 @@ export default function AIPeriodCheckerPage() {
   const mutation = useMutation({
     mutationFn: async (pid: string) => {
       const { data } = await api.post(`/ai/period/check?period_id=${pid}`)
-      return data as PeriodCheckResult
+      return data as PeriodCheckResponse
     },
     onSuccess: (data) => {
       setResult(data)
@@ -132,7 +118,10 @@ export default function AIPeriodCheckerPage() {
                 : 'bg-amber-50 border-amber-200 text-amber-700'
             }`}
           >
-            {result.summary}
+            期末检查完成：
+            {result.summary.pass} 通过 / {result.summary.warn} 警告 /{' '}
+            {result.summary.fail} 失败。
+            {result.can_close ? ' 可以进入期末结转。' : ' 请先处理警告或失败项。'}
           </div>
 
           {/* Check list */}

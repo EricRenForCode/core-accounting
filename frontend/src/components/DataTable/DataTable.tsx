@@ -5,6 +5,7 @@ export interface ColumnDef<T> {
   key: string
   header: string
   accessorKey?: keyof T
+  width?: string
   sortable?: boolean
   className?: string
   headerClassName?: string
@@ -103,11 +104,18 @@ export function DataTable<T extends { id?: unknown }>({
       {toolbar && <div className="p-4 border-b">{toolbar}</div>}
 
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full table-fixed">
+          <colgroup>
+            {selectable && <col style={{ width: '40px' }} />}
+            {columns.map((col) => (
+              <col key={col.key} style={col.width ? { width: col.width } : undefined} />
+            ))}
+            {rowActions && <col style={{ width: '80px' }} />}
+          </colgroup>
           <thead>
             <tr className="border-b bg-gray-50">
               {selectable && (
-                <th className="w-10 px-3 py-3">
+                <th className="w-10 px-0 py-3 text-center">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -163,7 +171,7 @@ export function DataTable<T extends { id?: unknown }>({
                     onClick={() => onRowClick?.(row)}
                   >
                     {selectable && (
-                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                      <td className="w-10 px-0 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={isSelected}
