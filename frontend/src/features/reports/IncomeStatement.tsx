@@ -77,6 +77,12 @@ export default function IncomeStatementPage() {
     )
   }
 
+  // 上期对比列 only renders when the backend found a prior period (P6)
+  const hasPrior = data.sections.some((s: BalanceSheetSection) =>
+    s.items.some((i: BalanceSheetItem) => i.prior != null),
+  )
+  const colCount = hasPrior ? 4 : 3
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {/* Toolbar */}
@@ -98,9 +104,12 @@ export default function IncomeStatementPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted/50 border-b">
-              <th className="py-2 pl-4 text-left w-1/2">项目</th>
-              <th className="py-2 pr-3 text-right w-1/4">本期金额</th>
-              <th className="py-2 pr-2 text-right w-1/4">本年累计</th>
+              <th className={`py-2 pl-4 text-left ${hasPrior ? 'w-2/5' : 'w-1/2'}`}>项目</th>
+              <th className="py-2 pr-3 text-right w-1/5">本期金额</th>
+              {hasPrior && (
+                <th className="py-2 pr-3 text-right w-1/5">上期金额</th>
+              )}
+              <th className="py-2 pr-2 text-right w-1/5">本年累计</th>
             </tr>
           </thead>
           <tbody>
@@ -110,7 +119,7 @@ export default function IncomeStatementPage() {
                   {/* Section label */}
                   <tr key={`h-${si}`} className="bg-muted/20">
                     <td
-                      colSpan={3}
+                      colSpan={colCount}
                       className="py-1.5 pl-4 font-semibold text-xs text-muted-foreground"
                     >
                       {section.label}
@@ -138,6 +147,15 @@ export default function IncomeStatementPage() {
                               ? `-${fmt(item.closing)}`
                               : fmt(item.closing)}
                           </td>
+                          {hasPrior && (
+                            <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
+                              {item.prior != null
+                                ? isNegative(item.prior)
+                                  ? `-${fmt(item.prior)}`
+                                  : fmt(item.prior)
+                                : '—'}
+                            </td>
+                          )}
                           <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">
                             {neg
                               ? `-${fmt(item.opening)}`
@@ -153,6 +171,13 @@ export default function IncomeStatementPage() {
                     <td className="py-1.5 pr-3 text-right tabular-nums">
                       {fmt(section.subtotal.closing)}
                     </td>
+                    {hasPrior && (
+                      <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
+                        {section.subtotal.prior != null
+                          ? fmt(section.subtotal.prior)
+                          : '—'}
+                      </td>
+                    )}
                     <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">
                       {fmt(section.subtotal.opening)}
                     </td>
@@ -171,6 +196,13 @@ export default function IncomeStatementPage() {
                     <td className="py-2 pr-3 text-right tabular-nums">
                       {fmt(data.totals.operating_profit.closing)}
                     </td>
+                    {hasPrior && (
+                      <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
+                        {data.totals.operating_profit.prior != null
+                          ? fmt(data.totals.operating_profit.prior)
+                          : '—'}
+                      </td>
+                    )}
                     <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
                       {fmt(data.totals.operating_profit.opening)}
                     </td>
@@ -184,6 +216,13 @@ export default function IncomeStatementPage() {
                     <td className="py-2 pr-3 text-right tabular-nums">
                       {fmt(data.totals.net_profit.closing)}
                     </td>
+                    {hasPrior && (
+                      <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
+                        {data.totals.net_profit.prior != null
+                          ? fmt(data.totals.net_profit.prior)
+                          : '—'}
+                      </td>
+                    )}
                     <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
                       {fmt(data.totals.net_profit.opening)}
                     </td>

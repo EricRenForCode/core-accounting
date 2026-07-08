@@ -10,10 +10,18 @@ PostgreSQL types (JSONB, INET, UUID) are compiled to SQLite equivalents.
 SQLite limitations: no SELECT FOR UPDATE support (post/reverse tests xfail).
 """
 
+import os
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import AsyncGenerator, Optional
+
+# Disable the Redis cache layer for the entire suite BEFORE app modules
+# import — a live local Redis would otherwise leak cached responses
+# (account trees, trial balances) across tests with fresh in-memory DBs.
+os.environ["CACHE_ENABLED"] = "false"
+# Rate limiting off by default in tests (dedicated tests re-enable it).
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 import pytest
 import pytest_asyncio
@@ -130,8 +138,14 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
                 raise
 
     async def override_get_ai_readonly_db():
+        # Same error semantics as get_db: a failed AI query must not poison
+        # the shared in-memory connection for subsequent requests.
         async with session_factory() as session:
-            yield session
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_ai_readonly_db] = override_get_ai_readonly_db
@@ -156,7 +170,10 @@ async def _create_test_role(db: AsyncSession, name: str = "finance_manager") -> 
              "period:close","period:reopen","aux:manage","cashier:use","assets:manage",
              "ai:use","admin:users","admin:roles","admin:backup","admin:audit-log"]
     role = Role(id=uuid.uuid4(), name=name, permissions={p: True for p in perms})
-    db.add(role); await db.flush(); return role
+    # Commit (not just flush): seeded data must survive mid-test rollbacks —
+    # error-path requests roll back the shared StaticPool connection, and a
+    # flush-only seed would be silently wiped (manifests as 401s mid-test).
+    db.add(role); await db.commit(); return role
 
 async def _create_test_user(db: AsyncSession, username: str = "testuser",
                             display_name: str = "Test User", role_name: str = "finance_manager") -> User:
@@ -167,7 +184,7 @@ async def _create_test_user(db: AsyncSession, username: str = "testuser",
     role = await _create_test_role(db, role_name)
     user = User(id=uuid.uuid4(), username=username, password_hash=hash_password("testpass123"),
                 display_name=display_name, role_id=role.id, is_enabled=True)
-    db.add(user); await db.flush(); return user
+    db.add(user); await db.commit(); return user
 
 async def _create_test_period(db: AsyncSession, year: int = 2026, month: int = 6,
                               status: str = "open") -> Period:
@@ -176,7 +193,7 @@ async def _create_test_period(db: AsyncSession, year: int = 2026, month: int = 6
     period = result.scalar_one_or_none()
     if period: return period
     period = Period(id=uuid.uuid4(), year=year, month=month, status=status)
-    db.add(period); await db.flush(); return period
+    db.add(period); await db.commit(); return period
 
 async def _create_test_accounts(db: AsyncSession) -> tuple[Account, Account, Account]:
     from sqlalchemy import select
@@ -195,7 +212,7 @@ async def _create_test_accounts(db: AsyncSession) -> tuple[Account, Account, Acc
     if not liability:
         liability = Account(id=uuid.uuid4(), code="2202", name="应付账款", level=1, type="liability", dc_type="C", is_enabled=True)
         db.add(liability)
-    await db.flush()
+    await db.commit()
     return cash, expense, liability
 
 async def _create_voucher(db: AsyncSession, user: User, period: Period, cash: Account,
@@ -215,7 +232,7 @@ async def _create_voucher(db: AsyncSession, user: User, period: Period, cash: Ac
                       summary="支付差旅费", debit_amount=amount, credit_amount=Decimal("0"))
     e2 = VoucherEntry(id=uuid.uuid4(), voucher_id=voucher.id, row_number=2, account_id=cash.id,
                       summary="支付差旅费", debit_amount=Decimal("0"), credit_amount=amount)
-    db.add_all([e1, e2]); await db.flush()
+    db.add_all([e1, e2]); await db.commit()
     result = await db.execute(sa_select(Voucher).options(
         selectinload(Voucher.entries).selectinload(VoucherEntry.account),
         selectinload(Voucher.entries).selectinload(VoucherEntry.auxiliaries),

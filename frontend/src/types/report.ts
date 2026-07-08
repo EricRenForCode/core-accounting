@@ -84,6 +84,8 @@ export interface JournalResponse {
 export interface StatementAmount {
   closing: string
   opening: string
+  /** 上期金额 — only on the income statement when a prior period exists */
+  prior?: string
 }
 
 export interface BalanceSheetItem {
@@ -91,6 +93,8 @@ export interface BalanceSheetItem {
   code?: string
   closing: string
   opening: string
+  /** 上期金额 — only on the income statement when a prior period exists */
+  prior?: string | null
 }
 
 export interface BalanceSheetSection {

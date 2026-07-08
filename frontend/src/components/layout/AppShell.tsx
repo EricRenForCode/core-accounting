@@ -2,6 +2,7 @@ import { Outlet } from '@tanstack/react-router'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { IdleLogout } from '@/components/IdleLogout'
+import { AIChatPanel } from '@/components/AIChatPanel'
 
 export function AppShell() {
   return (
@@ -26,6 +27,9 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Global AI assistant (bottom-right floating panel) */}
+      <AIChatPanel />
 
       {/* Status Bar */}
       <footer className="flex items-center justify-between h-6 px-4 border-t bg-gray-50 text-xs text-muted-foreground">

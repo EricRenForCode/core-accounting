@@ -7,19 +7,27 @@
  * API calls are mocked via vi.mock('@/lib/api') to avoid real HTTP.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import VoucherForm from '@/features/vouchers/VoucherForm'
 
-// Mock axios api module — must return proper Promise chains
-const mockApi = {
-  get: vi.fn().mockResolvedValue({ data: { id: 'p1', year: 2026, month: 6, status: 'open' } }),
-  post: vi.fn().mockResolvedValue({ data: { id: 'v1', status: 'draft' } }),
-  put: vi.fn().mockResolvedValue({ data: {} }),
-  delete: vi.fn().mockResolvedValue({ data: {} }),
-}
+// Mock axios api module — vi.mock is hoisted, so the mock object must be
+// created via vi.hoisted (a plain top-level const is not yet initialized
+// when the factory runs).
+const mockApi = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+}))
 
 vi.mock('@/lib/api', () => ({ default: mockApi }))
+
+// Mock router hooks — VoucherForm calls useNavigate() and useSearch()
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return { ...actual, useNavigate: () => vi.fn(), useSearch: () => ({}) }
+})
 
 // Mock stores
 vi.mock('@/stores/userStore', () => ({
@@ -46,45 +54,44 @@ function renderWithProviders(ui: React.ReactElement) {
 describe('VoucherForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockApi.get.mockResolvedValue({
+      data: { id: 'p1', year: 2026, month: 6, status: 'open' },
+    })
+    mockApi.post.mockResolvedValue({ data: { id: 'v1', status: 'draft' } })
+    mockApi.put.mockResolvedValue({ data: {} })
+    mockApi.delete.mockResolvedValue({ data: {} })
   })
 
-  it('renders the form with date input', () => {
+  it('renders a form with a date input after period loads', async () => {
     renderWithProviders(<VoucherForm />)
-    // Form should render with basic structure
-    expect(document.querySelector('form') || document.body).toBeTruthy()
+    await waitFor(() =>
+      expect(document.querySelector('input[type="date"]')).toBeTruthy()
+    )
   })
 
-  it('renders entry table with header labels', () => {
+  it('renders entry table header labels', async () => {
     renderWithProviders(<VoucherForm />)
-    // Entry table header columns should exist
-    const headers = ['摘要', '科目', '借方金额', '贷方金额']
-    for (const header of headers) {
-      const elements = screen.queryAllByText(new RegExp(header))
-      // At least one element matching header text should exist
-      // (label text may be in different placeholders/labels)
-      expect(elements.length).toBeGreaterThanOrEqual(0)
-    }
+    await waitFor(() => {
+      for (const header of ['摘要', '科目', '借方金额', '贷方金额']) {
+        expect(
+          screen.queryAllByText(new RegExp(header)).length
+        ).toBeGreaterThan(0)
+      }
+    })
   })
 
-  it('shows balance indicator', () => {
+  it('renders at least one action button', async () => {
     renderWithProviders(<VoucherForm />)
-    // BalanceBar component should render
-    const balanceElements = document.querySelectorAll('[class*="balance"]')
-    expect(balanceElements.length).toBeGreaterThanOrEqual(0)
+    await waitFor(() =>
+      expect(screen.queryAllByRole('button').length).toBeGreaterThan(0)
+    )
   })
 
-  it('renders submit button', () => {
+  it('starts balanced at 0.00 = 0.00 (empty entries)', async () => {
     renderWithProviders(<VoucherForm />)
-    // Should have a save/submit button
-    const buttons = screen.queryAllByRole('button')
-    // Save button may or may not be immediately visible
-    expect(buttons.length).toBeGreaterThanOrEqual(0)
-  })
-
-  it('renders attachment count input', () => {
-    renderWithProviders(<VoucherForm />)
-    // Attachments field should exist
-    const attachFields = screen.queryAllByPlaceholderText(/单据|附件/)
-    expect(attachFields.length).toBeGreaterThanOrEqual(0)
+    // Balance bar shows debit/credit totals; both start at 0
+    await waitFor(() =>
+      expect(screen.queryAllByText(/0\.00/).length).toBeGreaterThan(0)
+    )
   })
 })

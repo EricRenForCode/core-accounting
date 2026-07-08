@@ -25,9 +25,9 @@ const AI_TOOLS = [
   },
   {
     title: '期末检查',
-    description: '结账前自动运行 10 项检查，确保数据完整准确',
+    description: '结账前自动运行完整性检查，确保数据完整准确',
     icon: CheckCircle,
-    path: '/period/carry-forward',
+    path: '/ai/period-check',
     color: 'text-amber-600 bg-amber-50',
   },
 ]

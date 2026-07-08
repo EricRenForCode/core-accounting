@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from uuid import UUID
 
 
@@ -26,6 +26,18 @@ class AccountSchema(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    # Legacy rows (seeded before these columns existed) carry NULLs —
+    # a read endpoint must coerce them, never 500.
+    @field_validator("is_cash", "is_quantity", "is_enabled", mode="before")
+    @classmethod
+    def _none_bool(cls, v: object) -> object:
+        return False if v is None else v
+
+    @field_validator("aux_types", mode="before")
+    @classmethod
+    def _none_list(cls, v: object) -> object:
+        return [] if v is None else v
 
 
 class AccountCreate(BaseModel):
@@ -73,6 +85,16 @@ class AccountTreeNode(BaseModel):
     children: List["AccountTreeNode"] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+    @field_validator("is_cash", "is_quantity", "is_enabled", mode="before")
+    @classmethod
+    def _none_bool(cls, v: object) -> object:
+        return False if v is None else v
+
+    @field_validator("aux_types", mode="before")
+    @classmethod
+    def _none_list(cls, v: object) -> object:
+        return [] if v is None else v
 
 
 class AccountTreeResponse(BaseModel):

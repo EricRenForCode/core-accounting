@@ -50,6 +50,13 @@ async def generate_voucher(
 ) -> AIVoucherResponse:
     """Generate voucher entries from natural language description (§7.3)."""
     from app.ai.voucher_generator import generate_voucher_from_description
+    from app.models.period import Period
+
+    # Validate the period exists BEFORE any LLM call (404 early, no tokens spent).
+    period = await db.get(Period, body.period_id)
+    if period is None:
+        raise HTTPException(status_code=404, detail="会计期间不存在")
+
     return await generate_voucher_from_description(
         description=body.description,
         period_id=body.period_id,
@@ -140,7 +147,12 @@ async def explain_query_route(
 ) -> AIExplainQueryResponse:
     """Explain a generated SQL query in plain language."""
     from app.ai.llm_client import invoke_structured
+    from app.ai.nl_query import validate_readonly_sql
     import json
+
+    # Same gate as /ai/query: only SELECT may pass through the AI path,
+    # even for explanation (defense in depth; raises 403 READONLY_VIOLATION).
+    validate_readonly_sql(body.sql)
 
     prompt = f"""请用简单的中文解释以下 SQL 查询的含义:
 

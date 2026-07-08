@@ -34,6 +34,7 @@ import AINLQueryPage from '@/features/ai/AINLQuery'
 import AIReportInterpreterPage from '@/features/ai/AIReportInterpreter'
 import AIVoucherGeneratorPage from '@/features/ai/AIVoucherGenerator'
 import AIWorkspacePage from '@/features/ai/AIWorkspace'
+import AIPeriodCheckerPage from '@/features/ai/AIPeriodChecker'
 import PeriodClosePage from '@/features/period/PeriodClose'
 import OpeningBalancesPage from '@/features/period/OpeningBalances'
 import api from '@/lib/api'
@@ -436,6 +437,12 @@ const aiQueryRoute = createRoute({
   component: AINLQueryPage,
 })
 
+const aiPeriodCheckRoute = createRoute({
+  getParentRoute: () => aiRoute,
+  path: '/period-check',
+  component: AIPeriodCheckerPage,
+})
+
 // ─── Admin ──────────────────────────────────────────
 
 const adminRoute = createRoute({
@@ -553,6 +560,7 @@ export const routeTree = rootRoute.addChildren([
     aiVoucherRoute,
     aiReportRoute,
     aiQueryRoute,
+    aiPeriodCheckRoute,
   ]),
   adminRoute.addChildren([
     adminIndexRoute,

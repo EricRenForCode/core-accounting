@@ -47,17 +47,15 @@ router = APIRouter()
 
 # ── Helpers ───────────────────────────────────────────────────
 
-def _invalidate_trial_balance_cache(period_id: str) -> None:
-    """Best-effort cache invalidation for trial-balance reports.
+async def _invalidate_trial_balance_cache(period_id: str) -> None:
+    """Invalidate cached trial-balance reports for a period after posting.
 
-    When Redis is available in production, this will delete keys matching
-    the pattern `trial-balance:{period_id}*`. For now, it's a no-op since
-    the data is always queried fresh from the account_balances snapshot.
+    Deletes keys matching `trial-balance:{period_id}*`. cache_delete_pattern
+    swallows Redis errors, so failure never blocks the transaction.
     """
-    try:
-        pass  # Redis cache layer to be wired in later phase
-    except Exception:
-        pass  # Cache invalidation failure must not block the transaction
+    from app.core.cache import cache_delete_pattern
+
+    await cache_delete_pattern(f"trial-balance:{period_id}*")
 
 
 def _entry_to_response(entry: VoucherEntry) -> VoucherEntryResponse:
@@ -804,7 +802,7 @@ async def post_voucher(
     #    (tracks Voucher.status UPDATE and AccountBalance INSERT/UPDATE)
 
     # 9. Invalidate trial-balance cache (best-effort — Redis may not be configured)
-    _invalidate_trial_balance_cache(str(period.id))
+    await _invalidate_trial_balance_cache(str(period.id))
 
     await db.flush()
     await db.commit()
@@ -1133,6 +1131,7 @@ async def export_vouchers(
     params: ExportVoucherRequest = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_permission("report:export")),
 ):
     """Export vouchers to Excel (same filter params as list).
 

@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import Request
-from sqlalchemy import event
+from sqlalchemy import event, inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
@@ -74,6 +74,22 @@ def _get_client_ip() -> Optional[str]:
     return None
 
 
+def _json_safe(val: Any) -> Any:
+    """Convert a single value to a JSON-safe representation for JSONB.
+
+    NOTE: datetime is a subclass of date, so check datetime first.
+    """
+    if isinstance(val, uuid.UUID):
+        return str(val)
+    if isinstance(val, datetime):
+        return val.isoformat()
+    if isinstance(val, date):
+        return val.isoformat()
+    if isinstance(val, Decimal):
+        return float(val)
+    return val
+
+
 def _serialize_instance(instance: Any) -> dict[str, Any]:
     """Serialize a SQLAlchemy model instance to a dict for audit logging.
 
@@ -82,22 +98,33 @@ def _serialize_instance(instance: Any) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for col in instance.__table__.columns:
         try:
-            val = getattr(instance, col.name)
-            # Convert non-JSON-native types to JSON-safe values for JSONB.
-            # NOTE: datetime is a subclass of date, so check datetime first.
-            if isinstance(val, uuid.UUID):
-                result[col.name] = str(val)
-            elif isinstance(val, datetime):
-                result[col.name] = val.isoformat()
-            elif isinstance(val, date):
-                result[col.name] = val.isoformat()
-            elif isinstance(val, Decimal):
-                result[col.name] = float(val)
-            else:
-                result[col.name] = val
+            result[col.name] = _json_safe(getattr(instance, col.name))
         except Exception:
             result[col.name] = None
     return result
+
+
+def _capture_old_values(instance: Any) -> Optional[dict[str, Any]]:
+    """Capture pre-UPDATE values of changed columns (§2.12 old/new diff).
+
+    Uses SQLAlchemy attribute history, which is still intact in after_flush
+    (it is reset in after_flush_postexec). Only changed columns are recorded,
+    so old_values doubles as the change set.
+    """
+    try:
+        state = sa_inspect(instance)
+    except Exception:
+        return None
+
+    old: dict[str, Any] = {}
+    for col in instance.__table__.columns:
+        try:
+            hist = state.attrs[col.name].history
+            if hist.has_changes() and hist.deleted:
+                old[col.name] = _json_safe(hist.deleted[0])
+        except Exception:
+            continue
+    return old or None
 
 
 def _write_audit_log(
@@ -119,18 +146,26 @@ def _write_audit_log(
         resource_type=table_name,
         resource_id=resource_id,
         new_values=new_values if action in ("INSERT", "UPDATE") else None,
-        old_values=None,  # Can't easily get old values from after_flush without inspection
+        old_values=_capture_old_values(instance) if action == "UPDATE" else None,
         ip_address=_get_client_ip(),
     )
     session.add(audit_entry)
 
 
+_listeners_installed = False
+
+
 def install_audit_listeners() -> None:
     """Register SQLAlchemy event listeners for audit logging.
 
-    Called once at application startup to wire up after_flush events
-    that capture INSERT, UPDATE, and DELETE operations.
+    Called at application startup (and by tests) to wire up after_flush
+    events that capture INSERT, UPDATE, and DELETE operations.
+    Idempotent — repeat calls do not attach duplicate listeners.
     """
+    global _listeners_installed
+    if _listeners_installed:
+        return
+    _listeners_installed = True
 
     def _after_flush(session: Session, flush_context: Any) -> None:
         """Callback after SQLAlchemy flush — intercepts all changes."""

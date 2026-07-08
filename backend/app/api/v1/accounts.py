@@ -30,6 +30,13 @@ from app.schemas.account import (
 router = APIRouter()
 
 
+async def _invalidate_account_tree_cache() -> None:
+    """Drop all cached account-tree variants after a chart mutation."""
+    from app.core.cache import cache_delete_pattern
+
+    await cache_delete_pattern("account-tree:*")
+
+
 @router.get("", response_model=AccountListResponse)
 async def list_accounts(
     parent_id: UUID = Query(None),
@@ -86,7 +93,15 @@ async def get_account_tree(
     """Return the full chart of accounts as a nested tree structure.
 
     Used by the account picker component in the frontend.
+    Cached in Redis for 5 minutes (§P4); invalidated on account mutations.
     """
+    from app.core.cache import ACCOUNT_TREE_TTL, cache_get_json, cache_set_json
+
+    cache_key = f"account-tree:{type}:{is_enabled}"
+    cached = await cache_get_json(cache_key)
+    if cached is not None:
+        return AccountTreeResponse.model_validate(cached)
+
     # 1. Build query with optional filters
     conditions = []
     if type is not None:
@@ -103,6 +118,8 @@ async def get_account_tree(
     # 2. Build lookup dict: id → AccountTreeNode
     node_map: dict[UUID, AccountTreeNode] = {}
     for a in all_accounts:
+        # bool(...) guards: legacy rows seeded before these flags existed
+        # carry NULLs, which the response schema (bool) rejects with a 500.
         node_map[a.id] = AccountTreeNode(
             id=a.id,
             code=a.code,
@@ -111,11 +128,11 @@ async def get_account_tree(
             level=a.level,
             type=a.type,
             dc_type=a.dc_type,
-            is_cash=a.is_cash,
+            is_cash=bool(a.is_cash),
             aux_types=a.aux_types or [],
-            is_quantity=a.is_quantity,
+            is_quantity=bool(a.is_quantity),
             quantity_unit=a.quantity_unit,
-            is_enabled=a.is_enabled,
+            is_enabled=bool(a.is_enabled),
         )
 
     # 3. Attach children to parents; roots have parent_id IS NULL
@@ -127,10 +144,12 @@ async def get_account_tree(
         elif a.parent_id in node_map:
             node_map[a.parent_id].children.append(node)
 
-    return AccountTreeResponse(
+    response = AccountTreeResponse(
         accounts=roots,
         total_count=len(all_accounts),
     )
+    await cache_set_json(cache_key, response.model_dump(mode="json"), ACCOUNT_TREE_TTL)
+    return response
 
 
 @router.post("", response_model=AccountSchema, status_code=201)
@@ -201,6 +220,7 @@ async def create_account(
     db.add(account)
     await db.flush()
     await db.refresh(account)
+    await _invalidate_account_tree_cache()
 
     return AccountSchema.model_validate(account)
 
@@ -233,6 +253,7 @@ async def update_account(
 
     await db.flush()
     await db.refresh(account)
+    await _invalidate_account_tree_cache()
 
     return AccountSchema.model_validate(account)
 
@@ -284,5 +305,6 @@ async def delete_account(
     # 4. Delete account
     await db.delete(account)
     await db.flush()
+    await _invalidate_account_tree_cache()
 
     return {"message": "Account deleted"}

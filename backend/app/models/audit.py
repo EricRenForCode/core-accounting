@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Index,
+    Integer,
     String,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
@@ -21,8 +22,12 @@ class AuditLog(Base):
 
     __tablename__ = "audit_logs"
 
+    # BIGINT PK in Postgres; plain INTEGER for SQLite tests — sqlite only
+    # autoincrements an `INTEGER PRIMARY KEY`, not BIGINT.
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True

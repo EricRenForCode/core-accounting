@@ -109,6 +109,34 @@ async def test_statements_templates(
 
 
 @pytest.mark.asyncio
+async def test_statement_export_uses_encoded_chinese_filename(
+    client: AsyncClient,
+    auth_headers: dict,
+    test_period: Period,
+):
+    """POST /api/v1/statements/export — Chinese filenames must not crash headers."""
+    resp = await client.post(
+        "/api/v1/statements/export",
+        headers=auth_headers,
+        json={
+            "type": "balance_sheet",
+            "period_id": str(test_period.id),
+            "format": "excel",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert (
+        resp.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    content_disposition = resp.headers["content-disposition"]
+    assert f'filename="______{test_period.year}{test_period.month:02d}.xlsx"' in content_disposition
+    assert "filename*=UTF-8''" in content_disposition
+    assert "%E8%B5%84%E4%BA%A7%E8%B4%9F%E5%80%BA%E8%A1%A8" in content_disposition
+
+
+@pytest.mark.asyncio
 async def test_balance_sheet_period_not_found(
     client: AsyncClient,
     auth_headers: dict,
