@@ -141,12 +141,13 @@ export default function VoucherList() {
       key: 'voucher_no',
       header: '凭证号',
       accessorKey: 'voucher_no',
+      width: '150px',
       sortable: true,
       cell: (item) => (
         <Link
           to="/vouchers/$voucherId"
           params={{ voucherId: item.id }}
-          className="font-mono text-sm text-accent hover:underline"
+          className="block truncate font-mono text-sm text-accent hover:underline"
         >
           {item.voucher_no}
         </Link>
@@ -155,14 +156,16 @@ export default function VoucherList() {
     {
       key: 'date',
       header: '日期',
+      width: '120px',
       sortable: true,
       cell: (item) => <span className="text-sm">{formatDate(item.date)}</span>,
     },
     {
       key: 'summary',
       header: '摘要',
+      width: '34%',
       cell: (item) => (
-        <span className="text-sm text-muted-foreground max-w-[300px] truncate block">
+        <span className="block truncate text-sm text-muted-foreground">
           {getFirstSummary(item.entries)}
         </span>
       ),
@@ -170,6 +173,7 @@ export default function VoucherList() {
     {
       key: 'debit',
       header: '借方合计',
+      width: '140px',
       className: 'text-right',
       cell: (item) => {
         const { debit } = getTotals(item.entries)
@@ -183,6 +187,7 @@ export default function VoucherList() {
     {
       key: 'credit',
       header: '贷方合计',
+      width: '140px',
       className: 'text-right',
       cell: (item) => {
         const { credit } = getTotals(item.entries)
@@ -196,6 +201,7 @@ export default function VoucherList() {
     {
       key: 'status',
       header: '状态',
+      width: '100px',
       cell: (item) => {
         const cfg = STATUS_MAP[item.status] || { label: item.status, color: 'default' as const }
         return <StatusBadge status={item.status} label={cfg.label} />
@@ -204,6 +210,7 @@ export default function VoucherList() {
     {
       key: 'attachments',
       header: '附件',
+      width: '72px',
       cell: (item) => (
         <span className="text-sm text-muted-foreground">
           {item.attachments > 0 ? item.attachments : '-'}
