@@ -19,6 +19,7 @@ Statements (§3.7):
 from uuid import UUID
 
 from decimal import Decimal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -47,6 +48,13 @@ from app.schemas.report import (
 
 report_router = APIRouter()
 statement_router = APIRouter()
+
+
+def _content_disposition_attachment(filename: str) -> str:
+    """Build a standards-compliant attachment header for UTF-8 filenames."""
+    ascii_fallback = "".join(ch if ord(ch) < 128 else "_" for ch in filename)
+    encoded_filename = quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
 
 
 # ── Reports (§3.6) ────────────────────────────────────────────
@@ -1734,7 +1742,7 @@ async def export_statement(
         return StreamingResponse(
             buffer,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": _content_disposition_attachment(filename)},
         )
 
     elif body.format == "pdf":
