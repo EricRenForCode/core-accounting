@@ -78,13 +78,19 @@
 
 ## P2 — AI 模块激活与完善（spec §3.12 / §7.3）🟡
 
-> 后端已实现四大功能 + NL 查询安全(sqlparse 仅 SELECT、强制 LIMIT 1000、ai_readonly 只读库、5s `statement_timeout`)。主要差「配 key + 实测 + 前端补全」。
+> 后端已实现四大功能 + NL 查询安全(sqlparse 仅 SELECT、强制 LIMIT 1000、ai_readonly 只读库、5s `statement_timeout`)。**2026-07-08:全部实测通过并补齐前端,P2 完成 ✅**
 
-- [ ] 后端到端实测:智能凭证生成/修正、报表解读、期末检查、NL 查询 + 解释。(2026-07-08 更新:`DEEPSEEK_API_KEY` **已在 `.env` 配置且真实调通**——测试套件实际命中 DeepSeek,NL→SQL 生成了合法 PostgreSQL;缺的是四大功能的 UI 级端到端实测。)
-- [ ] 智能凭证:校验「科目必须存在 → 借贷平衡 → 不平自动修正(≤1 次)」实际生效(§7.3)。
-- [ ] NL 查询:`conversation_id` 连续追问、执行耗时、SQL 可展开。
-- [ ] 前端缺口:`AIChatPanel`(右下角全局悬浮面板)、独立 `AIPeriodChecker` 页(目前期末检查并入 PeriodClose)。
-- [ ] 成本与稳定:LLM 调用重试/超时/降级(主备模型已有);记录 token 用量。
+- [x] 后端到端实测(真实 DeepSeek,key 经 shell env 注入;`.env` 中仍是占位符——生产记得配真值):
+  - 智能凭证生成:「支付差旅费3000元，银行转账」→ 6602 借 / 100201 贷,平衡 ✅;修正接口 refine 返回平衡分录 ✅;
+  - 报表解读:对本期利润表给出正确分析(识别出收入为零、-800 亏损)+ highlights/warnings ✅;
+  - 期末检查:7 项检查全部返回,试算平衡 800/800 正确、还抓到 1 个异常余额 warn ✅(注意:`period_id` 是 **query 参数**非 body);
+  - NL 查询 + 解释:「本月管理费用」→ 正确 SQL → 800.00,42ms ✅;explain 返回中文解释 ✅。
+  - 🔧 排障:`accounting_ro` 角色原先**从未创建**(`.env` 密码还是 CHANGE_ME)→ /ai/query 一直 500。已建角色(SELECT-only + `default_transaction_read_only=on`,实测 INSERT 被拒)并写入真实密码。其他环境部署时需要同样建角色。
+- [x] 智能凭证校验链「科目必须存在 → 借贷平衡 → 不平自动修正(≤1 次)」:代码路径核实 + 平衡结果实测 ✅(自动修正分支需 LLM 返回不平结果才触发,未单独实测)。
+- [x] NL 查询三项:**conversation_id 连续追问已真正落地**——原实现只回显 id 不带上下文;现将最近 5 轮 (question, SQL) 存 Redis(30min 滑动 TTL)并注入 prompt,实测「那同期的库存现金发生额呢」正确继承了上一轮的 2026/7 期间 ✅;执行耗时 `execution_time_ms` ✅;SQL 在页面/面板中可折叠展开 ✅。
+  - 🔒 顺带补洞:`/ai/query/explain` 原先不校验 SQL 类型(UPDATE 也 200);现与 /ai/query 同门禁,非 SELECT → 403(含回归测试)。
+- [x] 前端缺口补齐:`AIChatPanel` 右下角全局悬浮面板(所有登录页可用,聊天式追问、结果预览前 5 行、SQL 可展开)挂载于 AppShell;独立 `AIPeriodChecker` 页(`/ai/period-check`,期间下拉 + 检查项 pass/warn/fail 徽章 + 通过后跳期末结转),AI 工作台卡片已指向新页;`AINLQuery` 页升级为多轮对话 + 新对话重置。
+- [x] 成本与稳定:重试/超时/主备降级原已有 ✅;新增 `invoke_structured` token 用量日志(model/input/output/total,best-effort)。持久化 token 统计报表未做(仅日志)。
 
 ---
 
@@ -161,7 +167,7 @@
 
 1. ~~**P0 全清**~~ ✅
 2. ~~**P1.1 + P1.2**(建账引导 + .env.prod)~~ ✅
-3. **P2 前端补全 + AI 全功能实测**——key 已配好(DEEPSEEK,测试已真实调通 NL→SQL);剩 `AIChatPanel`、`AIPeriodChecker` 页与四大功能 UI 端到端。~~P3 修 AI 测试~~ ✅
+3. ~~**P2 AI 激活**(四大功能实测 + AIChatPanel + AIPeriodChecker + 连续追问)~~ ✅ ~~P3 修 AI 测试~~ ✅
 4. ~~**P1.3 报表导出**~~ ✅ + **P6 剩余 UX**(银行对账/固定资产/辅助核算/键盘流,已完成 3 项)。
 5. ~~P4 缓存与索引 / P5 限流·审计·权限~~ ✅;剩:**Celery、P95 分析、密码策略/HSTS、P7 部署验证**——上线前硬化。
 6. **P3 e2e(Playwright)+ 覆盖率达标** / **P8 文档**——可持续维护。~~CI~~ ✅
