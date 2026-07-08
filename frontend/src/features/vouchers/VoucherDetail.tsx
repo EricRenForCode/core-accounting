@@ -1,11 +1,16 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from '@tanstack/react-router'
+import { Link, useParams, useNavigate } from '@tanstack/react-router'
 import { useVoucher, useAuditVoucher, useUnauditVoucher } from '@/features/vouchers/useVouchers'
+import {
+  useVoucherDocuments,
+  DOC_STATUS_MAP,
+  DOC_TYPE_LABELS,
+} from '@/features/documents/useOriginalDocuments'
 import { useUserStore } from '@/stores/userStore'
 import { StatusBadge } from '@/components/StatusBadge'
 import { BalanceBar } from '@/components/BalanceBar'
 import { Skeleton } from '@/components/Skeleton'
-import { ArrowLeft, CheckCircle, XCircle, Undo2, ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, Undo2, ChevronDown, ChevronRight, Paperclip, FileText } from 'lucide-react'
 import type { VoucherEntry } from '@/features/vouchers/useVouchers'
 
 const STATUS_MAP: Record<string, { label: string; color: 'default' | 'success' | 'warning' | 'info' }> = {
@@ -131,6 +136,7 @@ export default function VoucherDetail() {
   const can = useUserStore((s) => s.can)
 
   const { data: voucher, isLoading, isError, error } = useVoucher(voucherId)
+  const { data: linkedDocuments } = useVoucherDocuments(voucherId)
   const auditMutation = useAuditVoucher()
   const unauditMutation = useUnauditVoucher()
 
@@ -290,6 +296,46 @@ export default function VoucherDetail() {
       <div className="mb-4">
         <BalanceBar totalDebit={totalDebit} totalCredit={totalCredit} />
       </div>
+
+      {/* Linked original documents (原始凭证) */}
+      {linkedDocuments && linkedDocuments.items.length > 0 && (
+        <div className="rounded-lg border bg-card mb-4 overflow-hidden">
+          <div className="border-b px-4 py-2.5">
+            <span className="text-sm font-medium inline-flex items-center gap-1.5">
+              <Paperclip size={14} />
+              关联原始凭证（{linkedDocuments.items.length}）
+            </span>
+          </div>
+          <div className="divide-y">
+            {linkedDocuments.items.map((docItem) => {
+              const cfg = DOC_STATUS_MAP[docItem.status] || { label: docItem.status, colorKey: 'draft' }
+              return (
+                <div key={docItem.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <FileText size={15} className="shrink-0 text-muted-foreground" />
+                  <Link
+                    to="/original-documents/$documentId"
+                    params={{ documentId: docItem.id }}
+                    className="truncate text-sm text-accent hover:underline"
+                  >
+                    {docItem.file_name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {DOC_TYPE_LABELS[docItem.document_type] || docItem.document_type}
+                  </span>
+                  {(docItem.total_amount || docItem.amount) && (
+                    <span className="text-xs font-mono text-muted-foreground shrink-0">
+                      ¥{parseFloat(docItem.total_amount || docItem.amount || '0').toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0">
+                    <StatusBadge status={cfg.colorKey} label={cfg.label} />
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Audit Actions */}
       <div className="flex items-center justify-between">

@@ -86,6 +86,16 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.ENVIRONMENT.strip().lower() == "production"
 
+    # ── File Uploads ──────────────────────────────────────────
+    UPLOAD_DIR: str = Field(
+        default="uploads",
+        description="Base directory for uploaded files (original documents, etc.)",
+    )
+    UPLOAD_MAX_BYTES: int = Field(
+        default=20 * 1024 * 1024,
+        description="Maximum upload file size in bytes (default 20 MB)",
+    )
+
     # ── System User ───────────────────────────────────────────
     SYSTEM_USER_ID: str = Field(
         default="00000000-0000-0000-0000-000000000000",

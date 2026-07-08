@@ -43,3 +43,6 @@ dist/
 
 # Docker
 *.log
+
+# Uploaded files (original documents)
+backend/uploads/

@@ -36,6 +36,7 @@ const menuItems: MenuItem[] = [
     children: [
       { label: '凭证列表', to: '/vouchers', icon: <span /> },
       { label: '录入凭证', to: '/vouchers/new', icon: <span /> },
+      { label: '原始凭证', to: '/original-documents', icon: <span /> },
       { label: '凭证模板', to: '/vouchers/templates', icon: <span /> },
     ],
   },
