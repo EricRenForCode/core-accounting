@@ -101,6 +101,32 @@ vouchers.status values: draft, audited, posted, reversed.
 """
 
 
+CONVERSATION_TTL = 1800  # 30 min sliding window per conversation
+CONVERSATION_MAX_TURNS = 5  # prior turns included in the prompt
+
+
+async def _load_conversation(conversation_id: _uuid.UUID | None) -> list[dict]:
+    """Load prior (question, sql) turns for a conversation (may be empty)."""
+    if conversation_id is None:
+        return []
+    from app.core.cache import cache_get_json
+
+    history = await cache_get_json(f"nlq:conv:{conversation_id}")
+    return history if isinstance(history, list) else []
+
+
+async def _store_conversation(
+    conversation_id: _uuid.UUID, history: list[dict], question: str, sql: str
+) -> None:
+    """Append this turn and persist with a sliding TTL (best-effort)."""
+    from app.core.cache import cache_set_json
+
+    history = (history + [{"question": question, "sql": sql}])[
+        -CONVERSATION_MAX_TURNS:
+    ]
+    await cache_set_json(f"nlq:conv:{conversation_id}", history, CONVERSATION_TTL)
+
+
 async def execute_nl_query(
     question: str,
     conversation_id: _uuid.UUID | None,
@@ -109,16 +135,29 @@ async def execute_nl_query(
     """Execute a natural language query against the AI read-only database.
 
     Full security: ai_readonly DB, sqlparse SELECT check, forced LIMIT, 5s timeout.
+    Follow-up questions: prior turns for the same conversation_id are stored
+    in Redis (30 min TTL) and included in the prompt, so 连续追问 like
+    "那上个月呢" resolves against earlier context.
     """
-    # 1. Get schema info
+    # 1. Get schema info + prior conversation turns
     schema = get_db_schema_summary()
+    history = await _load_conversation(conversation_id)
+    history_block = ""
+    if history:
+        turns = "\n".join(
+            f"- Q: {h['question']}\n  SQL: {h['sql']}" for h in history
+        )
+        history_block = f"""
+Previous turns in this conversation (use them to resolve follow-up references):
+{turns}
+"""
 
     # 2. Build prompt
     prompt = f"""You are a safe PostgreSQL query generator. Only generate SELECT statements.
 
 Database Schema:
 {schema}
-
+{history_block}
 Question: {question}
 
 Instructions:
@@ -156,8 +195,11 @@ Instructions:
     columns = list(result.keys())
     rows_data = [list(row) for row in result.fetchall()]
 
+    conv_id = conversation_id or _uuid.uuid4()
+    await _store_conversation(conv_id, history, question, sql)
+
     return AIQueryResponse(
-        conversation_id=conversation_id or _uuid.uuid4(),
+        conversation_id=conv_id,
         question=question,
         sql=sql,
         columns=columns,

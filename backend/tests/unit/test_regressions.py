@@ -134,6 +134,50 @@ async def test_nl_query_bad_sql_raises_clean_error(async_session, monkeypatch):
     assert result.scalar() == 1
 
 
+# ── NL query: conversation memory feeds follow-up prompts ─────
+
+
+@pytest.mark.asyncio
+async def test_nl_query_includes_conversation_history(async_session, monkeypatch):
+    """Prior turns must be included in the prompt so 连续追问 has context."""
+    captured: dict = {}
+
+    async def fake_invoke(prompt: str, max_retries: int = 2) -> str:
+        captured["prompt"] = prompt
+        return json.dumps({"sql": "SELECT 1"})
+
+    async def fake_history(conversation_id):
+        return [{"question": "本月管理费用多少", "sql": "SELECT 800"}]
+
+    monkeypatch.setattr(nl_query, "invoke_structured", fake_invoke)
+    monkeypatch.setattr(nl_query, "_load_conversation", fake_history)
+
+    resp = await nl_query.execute_nl_query(
+        question="那库存现金呢",
+        conversation_id=uuid.uuid4(),
+        ai_db=async_session,
+    )
+    assert resp.row_count == 1
+    # The prompt must carry the prior turn for the LLM to resolve "那…呢"
+    assert "本月管理费用多少" in captured["prompt"]
+    assert "SELECT 800" in captured["prompt"]
+
+
+# ── AI explain: non-SELECT rejected (defense in depth) ────────
+
+
+@pytest.mark.asyncio
+async def test_ai_explain_rejects_non_select(client: AsyncClient, auth_headers):
+    """/ai/query/explain must gate non-SELECT SQL like /ai/query does."""
+    resp = await client.post(
+        "/api/v1/ai/query/explain",
+        json={"sql": "UPDATE accounts SET name = 'x'"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "AI_READONLY_VIOLATION"
+
+
 # ── AI voucher generate: 404 before any LLM call ──────────────
 
 

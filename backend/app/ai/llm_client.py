@@ -1,5 +1,6 @@
 """LangChain ChatDeepSeek wrapper with structured output."""
 
+import logging
 import os
 from typing import Optional
 
@@ -7,6 +8,8 @@ import httpx
 from langchain_deepseek import ChatDeepSeek
 
 from app.config import Settings
+
+logger = logging.getLogger(__name__)
 
 settings = Settings()
 
@@ -87,6 +90,18 @@ async def invoke_structured(prompt: str, max_retries: int = 2) -> str:
                 prompt,
                 response_format={"type": "json_object"},
             )
+            # Token usage accounting (P2 成本记录) — best-effort, never fails.
+            usage = getattr(response, "usage_metadata", None) or {}
+            if usage:
+                logger.info(
+                    "llm_usage model=%s attempt=%d input_tokens=%s "
+                    "output_tokens=%s total_tokens=%s",
+                    getattr(client, "model_name", "deepseek"),
+                    attempt,
+                    usage.get("input_tokens"),
+                    usage.get("output_tokens"),
+                    usage.get("total_tokens"),
+                )
             return response.content
         except Exception as e:
             last_error = str(e)

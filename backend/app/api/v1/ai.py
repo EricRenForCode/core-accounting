@@ -147,7 +147,12 @@ async def explain_query_route(
 ) -> AIExplainQueryResponse:
     """Explain a generated SQL query in plain language."""
     from app.ai.llm_client import invoke_structured
+    from app.ai.nl_query import validate_readonly_sql
     import json
+
+    # Same gate as /ai/query: only SELECT may pass through the AI path,
+    # even for explanation (defense in depth; raises 403 READONLY_VIOLATION).
+    validate_readonly_sql(body.sql)
 
     prompt = f"""请用简单的中文解释以下 SQL 查询的含义:
 
