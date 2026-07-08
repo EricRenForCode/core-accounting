@@ -55,7 +55,7 @@ interface CurrentPeriod {
 export default function VoucherForm() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const search = useSearch({ strict: false }) as { templateId?: string }
+  const search = useSearch({ strict: false }) as { templateId?: string; documentId?: string }
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [attachments, setAttachments] = useState(0)
   const [entries, setEntries] = useState<EntryRow[]>([emptyRow(), emptyRow()])
@@ -63,6 +63,7 @@ export default function VoucherForm() {
   const [periodLoading, setPeriodLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastSummary, setLastSummary] = useState('')
+  const [sourceDocumentName, setSourceDocumentName] = useState('')
 
   // Fetch current period
   useEffect(() => {
@@ -117,6 +118,59 @@ export default function VoucherForm() {
       .catch(() => setError('模板加载失败，已打开空白凭证'))
   }, [search?.templateId])
 
+  // Prefill from an original document (原始凭证生成凭证)
+  useEffect(() => {
+    const documentId = search?.documentId
+    if (!documentId) return
+    Promise.all([
+      api.get(`/original-documents/${documentId}`),
+      api.get('/accounts', { params: { page_size: 500, is_enabled: true } }),
+    ])
+      .then(([dRes, aRes]) => {
+        const doc = dRes.data as {
+          file_name: string
+          issue_date?: string | null
+          summary?: string | null
+          recognized_fields?: {
+            suggested_entries?: Array<{
+              account_code: string
+              summary: string
+              debit_amount: string
+              credit_amount: string
+            }>
+          } | null
+        }
+        setSourceDocumentName(doc.file_name)
+        if (doc.issue_date) setDate(doc.issue_date)
+        setAttachments(1)
+
+        const byCode = new Map<string, { id: string; code: string; name: string; aux_types: string[] | null }>(
+          (aRes.data.accounts ?? []).map(
+            (a: { id: string; code: string; name: string; aux_types: string[] | null }) => [a.code, a],
+          ),
+        )
+        const rows: EntryRow[] = (doc.recognized_fields?.suggested_entries ?? []).map((e) => {
+          const acct = byCode.get(e.account_code)
+          const debit = parseFloat(e.debit_amount || '0')
+          const credit = parseFloat(e.credit_amount || '0')
+          return {
+            ...emptyRow(),
+            accountId: acct?.id ?? '',
+            accountCode: acct?.code ?? e.account_code,
+            accountName: acct?.name ?? '',
+            auxTypes: acct?.aux_types ?? [],
+            summary: e.summary || doc.summary || '',
+            debitAmount: debit > 0 ? String(debit) : '',
+            creditAmount: credit > 0 ? String(credit) : '',
+          }
+        })
+        if (rows.length > 0) {
+          setEntries(rows.length >= 2 ? rows : [...rows, emptyRow()])
+        }
+      })
+      .catch(() => setError('原始凭证加载失败，已打开空白凭证'))
+  }, [search?.documentId])
+
   // Calculate totals
   const totalDebit = entries.reduce((sum, e) => sum + (parseFloat(e.debitAmount) || 0), 0)
   const totalCredit = entries.reduce((sum, e) => sum + (parseFloat(e.creditAmount) || 0), 0)
@@ -140,7 +194,18 @@ export default function VoucherForm() {
       const { data: result } = await api.post('/vouchers', data)
       return result
     },
-    onSuccess: () => {
+    onSuccess: async (result: { id: string }) => {
+      // Link the source original document to the new voucher (best-effort)
+      if (search?.documentId) {
+        try {
+          await api.post(`/original-documents/${search.documentId}/link-voucher`, {
+            voucher_id: result.id,
+          })
+          queryClient.invalidateQueries({ queryKey: ['original-documents'] })
+        } catch {
+          /* 凭证已创建成功；关联失败可在原始凭证页手动关联 */
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['vouchers'] })
       navigate({ to: '/vouchers', params: {} })
     },
@@ -307,6 +372,7 @@ export default function VoucherForm() {
         {currentPeriod
           ? `当前期间: ${currentPeriod.year}年${currentPeriod.month}月`
           : '⚠️ 当前没有打开的会计期间'}
+        {sourceDocumentName && ` · 来自原始凭证「${sourceDocumentName}」`}
       </p>
 
       {error && (

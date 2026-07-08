@@ -16,6 +16,7 @@ from app.models.audit import AuditLog
 from app.models.cashier import CashJournal, BankJournal
 from app.models.asset import FixedAsset
 from app.models.system_param import SystemParam
+from app.models.original_document import OriginalDocument
 
 __all__ = [
     # Base
@@ -52,4 +53,6 @@ __all__ = [
     "FixedAsset",
     # SystemParam
     "SystemParam",
+    # OriginalDocument
+    "OriginalDocument",
 ]

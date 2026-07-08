@@ -13,6 +13,8 @@ import VoucherList from '@/features/vouchers/VoucherList'
 import VoucherDetail from '@/features/vouchers/VoucherDetail'
 import VoucherTemplateList from '@/features/vouchers/VoucherTemplateList'
 import VoucherTemplateForm from '@/features/vouchers/VoucherTemplateForm'
+import DocumentList from '@/features/documents/DocumentList'
+import DocumentDetail from '@/features/documents/DocumentDetail'
 import TrialBalance from '@/features/ledgers/TrialBalance'
 import GeneralLedger from '@/features/ledgers/GeneralLedger'
 import DetailLedger from '@/features/ledgers/DetailLedger'
@@ -223,6 +225,26 @@ const voucherDetailRoute = createRoute({
   getParentRoute: () => vouchersRoute,
   path: '/$voucherId',
   component: VoucherDetail,
+})
+
+// ─── Original Documents (原始凭证) ──────────────────
+
+const originalDocumentsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/original-documents',
+  component: () => <Outlet />,
+})
+
+const originalDocumentsIndexRoute = createRoute({
+  getParentRoute: () => originalDocumentsRoute,
+  path: '/',
+  component: DocumentList,
+})
+
+const originalDocumentDetailRoute = createRoute({
+  getParentRoute: () => originalDocumentsRoute,
+  path: '/$documentId',
+  component: DocumentDetail,
 })
 
 // ─── Ledgers ────────────────────────────────────────
@@ -521,6 +543,10 @@ export const routeTree = rootRoute.addChildren([
     voucherTemplateNewRoute,
     voucherTemplateEditRoute,
     voucherDetailRoute,
+  ]),
+  originalDocumentsRoute.addChildren([
+    originalDocumentsIndexRoute,
+    originalDocumentDetailRoute,
   ]),
   ledgersRoute.addChildren([
     ledgersIndexRoute,

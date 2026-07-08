@@ -32,6 +32,7 @@ from app.api.v1 import (
     dashboard,
     fixed_assets,
     health,
+    original_documents,
     periods,
     reports,
     voucher_templates,
@@ -77,6 +78,13 @@ api_router.include_router(fixed_assets.router, prefix="/fixed-assets", tags=["as
 
 # §3.12 — AI
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
+
+# Original documents (原始凭证/票据附件)
+api_router.include_router(
+    original_documents.router,
+    prefix="/original-documents",
+    tags=["original-documents"],
+)
 
 # §3.13 — Admin
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
