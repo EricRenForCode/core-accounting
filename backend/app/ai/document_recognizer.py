@@ -1,18 +1,27 @@
 """Document recognizer — OCR/AI 识别原始凭证 (§original-documents).
 
-MVP implementation: deterministic filename/keyword rules that produce the
-same structured output a real OCR + LLM pipeline would. Swap in a real
-engine by replacing `recognize_document` (interface is stable: file path +
-metadata in, `RecognitionResult` out). AI/OCR output NEVER posts directly —
-it only prefills a voucher draft that a human confirms and audits.
+`recognize_document` calls Aliyun OCR (混贴发票识别, `app/ai/aliyun_ocr.py`)
+when `ALIYUN_OCR_ACCESS_KEY_ID/SECRET` are configured and the file is an
+image/PDF; otherwise — and whenever Aliyun OCR fails or detects no invoice —
+it falls back to deterministic filename/keyword rules (`_recognize_by_rules`).
+AI/OCR output NEVER posts directly — it only prefills a voucher draft that a
+human confirms and audits.
 """
 
+import asyncio
+import logging
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+from app.ai.aliyun_ocr import AliyunOcrError, is_configured, recognize_mixed_invoices
+from app.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class SuggestedEntry(BaseModel):
@@ -80,16 +89,15 @@ def _extract_date(file_name: str) -> Optional[date]:
         return None
 
 
-def recognize_document(
+def _recognize_by_rules(
     file_name: str,
     content_type: str,
     file_size: int,
 ) -> RecognitionResult:
-    """Recognize an original document and suggest voucher entries.
+    """Deterministic filename/keyword fallback recognizer (no real OCR).
 
-    MVP: rule-based on the file name. A real implementation would OCR the
-    file at its storage path and run LLM structuring — the return type and
-    call site stay unchanged.
+    Used when Aliyun OCR is not configured, not applicable to this file
+    type, or fails/returns no structured invoice data.
     """
     lower = file_name.lower()
     warnings: list[str] = []
@@ -152,3 +160,170 @@ def recognize_document(
         confidence=confidence,
         warnings=warnings,
     )
+
+
+# ── Aliyun OCR mapping (混贴发票识别 → RecognitionResult) ──────
+
+_OCR_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".pdf"}
+
+# Aliyun invoice `op` → (document_type, debit account). None means "guess
+# from the recognized text via _EXPENSE_RULES" (generic VAT invoices cover
+# many expense categories, so they can't be mapped from `op` alone).
+_INVOICE_OP_MAP: dict[str, tuple[str, Optional[str]]] = {
+    "taxi_invoice": ("reimbursement", "6602"),
+    "train_invoice": ("reimbursement", "6602"),
+    "air_itinerary": ("reimbursement", "6602"),
+    "bus_ship_ticket": ("reimbursement", "6602"),
+    "roll_ticket": ("reimbursement", "6602"),
+    "toll_invoice": ("reimbursement", "6602"),
+    "quota_invoice": ("invoice", "6602"),
+}
+
+_OCR_DATE_RE = re.compile(r"(20\d{2})[-/年.]?(\d{1,2})[-/月.]?(\d{1,2})日?")
+
+
+def _field_value(data: dict, key: str) -> Optional[str]:
+    """Extract a field's text value from an OCR result dict.
+
+    Aliyun OCR fields are usually `{"value": ..., "keyProb": ..., ...}`,
+    but fall back to a plain scalar if the SDK ever returns one directly.
+    """
+    raw = data.get(key)
+    if isinstance(raw, dict):
+        raw = raw.get("value")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _ocr_amount(data: dict, key: str) -> Optional[Decimal]:
+    text = _field_value(data, key)
+    if not text:
+        return None
+    try:
+        return Decimal(text.replace(",", "").replace("￥", "").replace("¥", ""))
+    except InvalidOperation:
+        return None
+
+
+def _ocr_date(data: dict, key: str) -> Optional[date]:
+    text = _field_value(data, key)
+    if not text:
+        return None
+    m = _OCR_DATE_RE.search(text)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def _map_aliyun_invoice(ocr_data: dict) -> Optional[RecognitionResult]:
+    """Map a `RecognizeMixedInvoices` response into a `RecognitionResult`.
+
+    Returns None if no invoice was detected (`count` == 0 or empty
+    `subMsgs`) — caller should fall back to the rule-based recognizer.
+    """
+    sub_msgs = ocr_data.get("subMsgs") or []
+    if not sub_msgs:
+        return None
+    sub = sub_msgs[0]
+    op = str(sub.get("op") or "").strip()
+    type_label = str(sub.get("type") or "票据").strip()
+
+    result = sub.get("result")
+    data = result.get("data") if isinstance(result, dict) else None
+    if not isinstance(data, dict):
+        data = result if isinstance(result, dict) else {}
+
+    amount = _ocr_amount(data, "invoiceAmountPreTax")
+    tax_amount = _ocr_amount(data, "invoiceTax")
+    total_amount = _ocr_amount(data, "totalAmount") or amount
+    issue_date = _ocr_date(data, "invoiceDate") or _ocr_date(data, "date")
+    invoice_no = _field_value(data, "invoiceNumber") or _field_value(data, "invoiceCode")
+    counterparty = _field_value(data, "sellerName")
+
+    warnings: list[str] = []
+    if amount is None and total_amount is None:
+        warnings.append("未能从票据中识别金额，请人工填写")
+    if issue_date is None:
+        warnings.append("未能从票据中识别日期，请人工填写")
+
+    mapped = _INVOICE_OP_MAP.get(op)
+    if mapped is not None:
+        doc_type, debit_code = mapped
+    else:
+        doc_type = "invoice"
+        debit_code = None
+        keyword_source = f"{counterparty or ''} {type_label}".lower()
+        for keywords, _dtype, code, _label in _EXPENSE_RULES:
+            if any(k in keyword_source for k in keywords):
+                debit_code = code
+                break
+        debit_code = debit_code or "6602"  # 管理费用: generic expense fallback
+
+    summary = f"取得{type_label}" + (f"（{counterparty}）" if counterparty else "")
+    entry_amount = total_amount or amount or Decimal("0")
+    entries = [
+        SuggestedEntry(account_code=debit_code, summary=summary, debit_amount=entry_amount),
+        SuggestedEntry(account_code="1001", summary=summary, credit_amount=entry_amount),
+    ]
+
+    confidence = Decimal("0.9") if (amount or total_amount) and issue_date else Decimal("0.6")
+
+    return RecognitionResult(
+        document_type=doc_type,
+        issue_date=issue_date,
+        amount=amount,
+        tax_amount=tax_amount,
+        total_amount=total_amount,
+        counterparty_name=counterparty,
+        invoice_no=invoice_no,
+        summary=summary,
+        suggested_entries=entries,
+        confidence=confidence,
+        warnings=warnings,
+    )
+
+
+async def recognize_document(
+    file_name: str,
+    content_type: str,
+    file_size: int,
+    file_path: Optional[Path] = None,
+) -> RecognitionResult:
+    """Recognize an original document and suggest voucher entries.
+
+    Calls Aliyun OCR (real image/PDF recognition) when configured and
+    `file_path` is given; falls back to the deterministic rule engine when
+    OCR is unconfigured, not applicable, fails, or detects nothing.
+    """
+    settings = Settings()
+    suffix = Path(file_name).suffix.lower()
+    can_use_ocr = (
+        is_configured(settings)
+        and file_path is not None
+        and suffix in _OCR_IMAGE_SUFFIXES
+    )
+
+    if can_use_ocr:
+        assert file_path is not None
+        try:
+            file_bytes = await asyncio.to_thread(file_path.read_bytes)
+            ocr_data = await asyncio.to_thread(
+                recognize_mixed_invoices, file_bytes, settings
+            )
+            result = _map_aliyun_invoice(ocr_data)
+            if result is not None:
+                return result
+            logger.info("Aliyun OCR detected no invoice for %s, falling back", file_name)
+        except AliyunOcrError as exc:
+            logger.warning("Aliyun OCR failed for %s: %s", file_name, exc)
+
+        fallback = _recognize_by_rules(file_name, content_type, file_size)
+        fallback.warnings.append("阿里云OCR未识别到票据信息，已使用规则引擎兜底，请人工核对")
+        return fallback
+
+    return _recognize_by_rules(file_name, content_type, file_size)

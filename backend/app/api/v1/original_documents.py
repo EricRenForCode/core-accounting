@@ -309,7 +309,13 @@ async def recognize(
     if doc.status in ("voucher_created", "archived"):
         raise HTTPException(status_code=409, detail="已生成凭证或已归档，不可再识别")
 
-    result = recognize_document(doc.file_name, doc.content_type, doc.file_size)
+    file_path = _upload_root() / doc.storage_key
+    result = await recognize_document(
+        doc.file_name,
+        doc.content_type,
+        doc.file_size,
+        file_path=file_path if file_path.is_file() else None,
+    )
 
     doc.document_type = result.document_type
     doc.issue_date = result.issue_date or doc.issue_date

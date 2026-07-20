@@ -61,6 +61,27 @@ class Settings(BaseSettings):
         default="deepseek-chat", description="Fallback DeepSeek model if primary fails"
     )
 
+    # ── Aliyun OCR (票据识别) ─────────────────────────────────
+    ALIYUN_OCR_ACCESS_KEY_ID: SecretStr = Field(
+        default=SecretStr(""),
+        description="Aliyun AccessKey ID for OCR API (视觉智能开放平台/OCR). "
+        "Leave empty to disable — recognition falls back to the rule engine.",
+    )
+    ALIYUN_OCR_ACCESS_KEY_SECRET: SecretStr = Field(
+        default=SecretStr(""), description="Aliyun AccessKey Secret for OCR API"
+    )
+    ALIYUN_OCR_ENDPOINT: str = Field(
+        default="ocr-api.cn-hangzhou.aliyuncs.com",
+        description="Aliyun OCR API endpoint",
+    )
+
+    @property
+    def aliyun_ocr_configured(self) -> bool:
+        return bool(
+            self.ALIYUN_OCR_ACCESS_KEY_ID.get_secret_value().strip()
+            and self.ALIYUN_OCR_ACCESS_KEY_SECRET.get_secret_value().strip()
+        )
+
     # ── CORS ──────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = Field(
         default=["http://localhost:5173", "http://localhost:3000"],
@@ -138,5 +159,10 @@ class Settings(BaseSettings):
         if self.DEEPSEEK_API_KEY.get_secret_value().endswith("CHANGE_ME"):
             warnings.append(
                 "DEEPSEEK_API_KEY is a placeholder — AI features will be unavailable."
+            )
+        if not self.aliyun_ocr_configured:
+            warnings.append(
+                "ALIYUN_OCR_ACCESS_KEY_ID/SECRET not set — 票据识别 will use the "
+                "rule-based fallback instead of real OCR."
             )
         return warnings
