@@ -391,14 +391,14 @@ export default function VoucherDetail() {
       {/* Audit mutation error */}
       {auditMutation.isError && (
         <div className="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-          {(auditMutation.error as { message?: string })?.message || '审核操作失败'}
+          {(auditMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '审核操作失败'}
         </div>
       )}
 
       {/* Unaudit mutation error */}
       {unauditMutation.isError && (
         <div className="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-          {(unauditMutation.error as { message?: string })?.message || '反审核操作失败'}
+          {(unauditMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '反审核操作失败'}
         </div>
       )}
     </div>
