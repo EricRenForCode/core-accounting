@@ -3,6 +3,7 @@
 import json
 import time
 import uuid as _uuid
+from datetime import date
 
 import sqlparse
 from sqlalchemy import text
@@ -153,7 +154,10 @@ Previous turns in this conversation (use them to resolve follow-up references):
 """
 
     # 2. Build prompt
+    today = date.today()
     prompt = f"""You are a safe PostgreSQL query generator. Only generate SELECT statements.
+
+Today's date is {today.isoformat()} (year {today.year}).
 
 Database Schema:
 {schema}
@@ -162,6 +166,8 @@ Question: {question}
 
 Instructions:
 - Generate a single SELECT query that answers the question
+- Resolve relative or 2-digit year references (e.g. "26年4月", "今年", "上个月")
+  against today's date above — do not guess a year from training data
 - Use proper JOINs and aggregations as needed
 - Use LIMIT in your query
 - All UUID columns are stored as UUID type
