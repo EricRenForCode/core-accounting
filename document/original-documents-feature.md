@@ -42,15 +42,16 @@
 
 ## 识别引擎（`app/ai/document_recognizer.py`）
 
-- 接口：`recognize_document(file_name, content_type, file_size) -> RecognitionResult`
+- 接口：`async recognize_document(file_name, content_type, file_size, file_path=None) -> RecognitionResult`
 - 输出结构：`document_type / issue_date / amount / tax_amount / total_amount / counterparty_name / invoice_no / summary / suggested_entries[] / confidence / warnings[]`
-- 第一版为确定性 mock 规则（从文件名提取金额/日期 + 关键词映射）：
+- **真实 OCR（阿里云）**：当 `ALIYUN_OCR_ACCESS_KEY_ID` / `ALIYUN_OCR_ACCESS_KEY_SECRET` 已配置（`app/config.py`）且文件是图片/PDF 时，调用阿里云 OCR「混贴发票识别」（`RecognizeMixedInvoices`，`app/ai/aliyun_ocr.py`，SDK `alibabacloud_ocr_api20210707`），自动识别票据类型（增值税发票/出租车票/火车票/行程单/定额发票等）并提取金额、税额、日期、发票号、销售方等结构化字段（`_map_aliyun_invoice`）。SDK 调用为同步阻塞 I/O，经 `asyncio.to_thread` 包装避免阻塞事件循环。
+- **规则引擎兜底**（`_recognize_by_rules`，原 mock 实现）：在以下情况生效——未配置阿里云 OCR、文件非图片/PDF（如 Excel/CSV）、OCR 调用失败、或 OCR 未识别到发票（`count=0`）。从文件名提取金额/日期 + 关键词映射：
   - `travel/差旅` → 借 6602 管理费用，贷 1001 库存现金（报销单）
   - `rent/房租`、`office/办公` → 费用类发票
   - `bank/回单/转账` → 借 1002 银行存款，贷 2202（银行回单）
   - `invoice/发票` → 发票类
   - `contract/合同` → 仅归档，不建议分录
-- 替换为真实 OCR/LLM 时只需重写该函数，路由与前端零改动。
+- 两条路径产出的结构一致，路由与前端零改动；OCR 兜底时会在 `warnings` 中注明「已使用规则引擎兜底」。
 
 ## 前端流程
 
@@ -67,7 +68,7 @@
 
 ## 后续扩展点
 
-- **真实 OCR/发票查验**：替换 `recognize_document` 内部实现（百度/腾讯 OCR、税局发票查验 API），可将 `document_id → 文件路径` 传入做真实图像识别；`warnings` 用于承载查验异常。
+- **发票查验/更多 OCR 供应商**：可在 `_map_aliyun_invoice` 旁增加百度/腾讯 OCR 或税局发票查验 API 作为二级校验；`warnings` 用于承载查验异常。
 - **对象存储**：`storage_key` 已抽象为相对 key，切换 OSS/S3 时只需替换 `_upload_root()` 读写与 `GET /{id}/file` 的响应（改为签名 URL 重定向）。
 - **多附件/一票多凭证**：当前一文档只关联一张凭证；如需多对多可加中间表 `voucher_documents`。
 - **归档流程**：`archived` 状态已预留，可在期末结账时批量归档。
