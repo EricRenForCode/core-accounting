@@ -6,6 +6,16 @@ Core Accounting 面向中小企业，连接票据、记账凭证、账表查询�
 
 [查看源码](https://github.com/EricRenForCode/core-accounting) · [后端文档](backend/README.md) · [前端文档](frontend/README.md) · [MIT 许可证](LICENSE)
 
+## 产品演示
+
+约 **42 秒中文解说**，快速了解仪表盘、凭证管理、原始票据、财务报表和 AI 财务问答界面。
+
+[![Core Accounting 产品界面动图预览：仪表盘、凭证、票据、报表与 AI 财务问答](docs/media/product-demo.gif)](https://github.com/EricRenForCode/core-accounting/releases/download/product-demo-2026-10-13/core-accounting-promo-narrated.mp4)
+
+[获取完整演示视频（MP4，1080p，含中文解说）](https://github.com/EricRenForCode/core-accounting/releases/download/product-demo-2026-10-13/core-accounting-promo-narrated.mp4) · [视频附件页](https://github.com/EricRenForCode/core-accounting/releases/tag/product-demo-2026-10-13)
+
+上方为加速、无声的动图预览。视频基于真实产品界面，使用虚构演示数据；AI 问答片段采用预设示例响应。
+
 ## 产品与服务
 
 - **软件免费**：采用 MIT 许可证，允许使用、修改与商业使用，需保留版权及许可声明。没有 Core Accounting 软件订阅费。
