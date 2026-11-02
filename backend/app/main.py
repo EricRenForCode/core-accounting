@@ -51,7 +51,7 @@ def _validate_production_config(settings: Settings) -> None:
         raise RuntimeError(
             "Refusing to start: insecure production configuration:\n  - "
             + details
-            + "\nFix these in backend/.env.prod (see .env.prod.example)."
+            + "\nFix these in the production env file (.env for Docker Compose; see .env.example)."
         )
 
 

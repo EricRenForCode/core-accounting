@@ -2,6 +2,8 @@
 
 Enterprise-grade Chinese accounting system API built with FastAPI.
 
+生产环境一键部署见仓库根目录 [README](../README.md#生产部署)（`./scripts/install.sh`）。下文是本机开发。
+
 ## Tech Stack
 
 - **Framework:** FastAPI 0.111 + Uvicorn (ASGI)

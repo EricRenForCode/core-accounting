@@ -46,3 +46,7 @@ dist/
 
 # Uploaded files (original documents)
 backend/uploads/
+
+# Database dumps produced by backups/backup.sh
+backups/*.sql
+backups/*.sql.gz
