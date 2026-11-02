@@ -1,10 +1,14 @@
 # Core Accounting — Docker Compose (Production)
-# Usage:
-#   cp backend/.env.example backend/.env.prod
-#   # Edit backend/.env.prod with real secrets
-#   docker compose -f docker-compose.prod.yml up -d
-
-version: "3.9"
+#
+# Preferred:
+#   ./scripts/install.sh
+#
+# Manual (after copying .env.example to .env and replacing placeholders):
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Keep Compose's existing project-name resolution (directory name, -p, or
+# COMPOSE_PROJECT_NAME) so upgrades reuse the original pgdata/redisdata volumes.
+# Run a separate development stack with an explicit, different project name.
 
 services:
   # ── PostgreSQL 15 (Production) ─────────────────────────
@@ -17,8 +21,6 @@ services:
       POSTGRES_DB: ${DB_NAME:-core_accounting}
     # No host port published — reachable only on the internal network as
     # "db:5432". Avoids collisions with other stacks' Postgres on the host.
-    # To connect a DB GUI temporarily: docker compose exec db psql ... or add
-    # a ports mapping on a free host port.
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
@@ -27,6 +29,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -46,6 +49,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -57,16 +61,26 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Compose drops the image CMD when entrypoint is set, so the server
+    # command has to be repeated here. The entrypoint runs migrations first.
+    entrypoint: ["sh", "/app/docker-entrypoint.sh"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     env_file:
-      - ./backend/.env.prod
+      - .env
     environment:
+      - RUN_DB_INIT=1
       - DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
-      - AI_READONLY_DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
+      - AI_READONLY_DATABASE_URL=postgresql+asyncpg://${DB_RO_USER:-accounting_ro}:${DB_RO_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
       - REDIS_URL=redis://redis:6379/0
+      - DB_RO_USER=${DB_RO_USER:-accounting_ro}
+      - DB_RO_PASSWORD=${DB_RO_PASSWORD:?required}
+      - DB_NAME=${DB_NAME:-core_accounting}
       - DEBUG=false
       - ENVIRONMENT=production
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -77,10 +91,11 @@ services:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/v1/health').raise_for_status()"]
-      interval: 30s
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8000/api/v1/health').raise_for_status()"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 8
+      start_period: 120s
 
   # ── Celery Worker (Production) ─────────────────────────
   celery-worker:
@@ -89,9 +104,10 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./backend/.env.prod
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://${DB_USER:-accounting}:${DB_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
+      - AI_READONLY_DATABASE_URL=postgresql+asyncpg://${DB_RO_USER:-accounting_ro}:${DB_RO_PASSWORD:?required}@db:5432/${DB_NAME:-core_accounting}
       - REDIS_URL=redis://redis:6379/0
       - DEBUG=false
       - ENVIRONMENT=production
@@ -100,27 +116,46 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.tasks worker --loglevel=warning --concurrency=4
+      backend:
+        condition: service_healthy
+    command: celery -A app.tasks:celery_app worker --loglevel=warning --concurrency=4
+    # The API image healthcheck probes port 8000. This process is a worker.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks:celery_app inspect ping -t 10 | grep -q pong"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 40s
     deploy:
       resources:
         limits:
           memory: 512M
 
-  # ── Nginx Reverse Proxy ────────────────────────────────
+  # ── Nginx: static UI + API reverse proxy ───────────────
   nginx:
-    image: nginx:1.25-alpine
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
     restart: unless-stopped
     ports:
       - "${NGINX_PORT:-80}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/v1/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
 volumes:
   pgdata:
   redisdata:
+  uploads:

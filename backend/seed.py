@@ -7,6 +7,7 @@ everything the moment any role exists.
 """
 import asyncio
 import json
+import os
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -114,10 +115,15 @@ async def seed():
             text("SELECT id FROM users WHERE username = :u"), {"u": "admin"}
         )
         admin_created = False
+        # Production install sets INITIAL_ADMIN_PASSWORD. Dev keeps admin123.
+        # Existing admin passwords are never overwritten.
+        admin_password = os.environ.get("INITIAL_ADMIN_PASSWORD", "admin123")
+        if len(admin_password) < 6:
+            raise SystemExit("INITIAL_ADMIN_PASSWORD must be at least 6 characters")
         if result.scalar() is None:
             await db.execute(
                 text("INSERT INTO users (id, username, password_hash, display_name, role_id, is_enabled) VALUES (:id, :username, :ph, :dn, :rid, :enabled)"),
-                {"id": str(uuid4()), "username": "admin", "ph": hash_password("admin123"),
+                {"id": str(uuid4()), "username": "admin", "ph": hash_password(admin_password),
                  "dn": "系统管理员", "rid": admin_role_id, "enabled": True},
             )
             admin_created = True
@@ -170,7 +176,12 @@ async def seed():
                 accounts_created += 1
 
         await db.commit()
-        admin_note = "admin user (admin/admin123)" if admin_created else "admin user already existed (password unchanged)"
+        if admin_created and admin_password == "admin123":
+            admin_note = "admin user created (admin/admin123 — change this password)"
+        elif admin_created:
+            admin_note = "admin user created (username admin; password is INITIAL_ADMIN_PASSWORD)"
+        else:
+            admin_note = "admin user already existed (password unchanged)"
         print(
             f"Seed done: roles ensured, {admin_note}, "
             f"{accounts_created}/{len(DEFAULT_ACCOUNTS)} accounts created "
