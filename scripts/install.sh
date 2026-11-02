@@ -364,7 +364,7 @@ AI and OCR are optional. The app runs without them; those features stay unavaila
   Backup:   ./backups/backup.sh
   Logs:     docker compose -f docker-compose.prod.yml logs -f
 
-Data lives in the Docker volumes of project core-accounting-prod. 'stop' and 'down' keep them. 'down -v' deletes the database.
+Data lives in this Compose project's named Docker volumes. Keep the same checkout directory and COMPOSE_PROJECT_NAME when updating. 'stop' and 'down' keep volumes; 'down -v' deletes them.
 
 This stack speaks HTTP. Terminate TLS in a proxy in front of Nginx and set PUBLIC_URL to the https origin.
 EOF

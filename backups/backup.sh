@@ -6,14 +6,14 @@
 #
 # DB_CONTAINER, when set, uses `docker exec` against that container instead of
 # `docker compose exec` (older installs).
+# Database identifiers default to the running container's POSTGRES_USER/DB,
+# including custom values from .env. Explicit DB_USER/DB_NAME overrides win.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$ROOT/backups}"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT/docker-compose.prod.yml}"
-DB_USER="${DB_USER:-accounting}"
-DB_NAME="${DB_NAME:-core_accounting}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/core_accounting_${TIMESTAMP}.sql.gz"
 
@@ -24,32 +24,29 @@ NC='\033[0m'
 log()  { echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $*"; }
 error(){ echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-dump_cmd() {
+db_exec() {
     if [[ -n "${DB_CONTAINER:-}" ]]; then
-        docker exec "${DB_CONTAINER}" pg_dump \
-            -U "${DB_USER}" \
-            -d "${DB_NAME}" \
-            --no-owner \
-            --no-acl \
-            --clean \
-            --if-exists
+        docker exec -i "${DB_CONTAINER}" "$@"
     else
-        docker compose -f "${COMPOSE_FILE}" exec -T db pg_dump \
-            -U "${DB_USER}" \
-            -d "${DB_NAME}" \
-            --no-owner \
-            --no-acl \
-            --clean \
-            --if-exists
+        docker compose -f "${COMPOSE_FILE}" exec -T db "$@"
     fi
 }
 
+dump_cmd() {
+    # Expand container variables inside the container, never by sourcing .env
+    # as shell code on the host. Pass operator overrides as literal arguments.
+    db_exec sh -c 'exec pg_dump \
+        -U "${1:-${POSTGRES_USER:-accounting}}" \
+        -d "${2:-${POSTGRES_DB:-core_accounting}}" \
+        --no-owner --no-acl --clean --if-exists' \
+        sh "${DB_USER:-}" "${DB_NAME:-}"
+}
+
 restore_cmd() {
-    if [[ -n "${DB_CONTAINER:-}" ]]; then
-        docker exec -i "${DB_CONTAINER}" psql -U "${DB_USER}" -d "${DB_NAME}"
-    else
-        docker compose -f "${COMPOSE_FILE}" exec -T db psql -U "${DB_USER}" -d "${DB_NAME}"
-    fi
+    db_exec sh -c 'exec psql \
+        -U "${1:-${POSTGRES_USER:-accounting}}" \
+        -d "${2:-${POSTGRES_DB:-core_accounting}}"' \
+        sh "${DB_USER:-}" "${DB_NAME:-}"
 }
 
 do_backup() {

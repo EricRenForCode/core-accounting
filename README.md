@@ -140,7 +140,7 @@ pnpm dev
 
 ## 生产部署
 
-这条路径给已经装好 Docker 的机器用。它启动完整生产栈：Nginx 上的 Web 界面和 API、FastAPI、Celery、PostgreSQL、Redis。数据库和 Redis 不映射到宿主机端口，只在 Compose 网络内可达。项目名是 `core-accounting-prod`，和本地开发的 Compose 卷分开。
+这条路径给已经装好 Docker 的机器用。它启动完整生产栈：Nginx 上的 Web 界面和 API、FastAPI、Celery、PostgreSQL、Redis。数据库和 Redis 不映射到宿主机端口，只在 Compose 网络内可达。默认沿用 Compose 既有的项目名，使升级能够复用原来的数据库与 Redis 卷。
 
 软件本身免费。DeepSeek 与阿里云 OCR 仍是外部服务；不填密钥时应用可以启动，对应的 AI / 云端识别不可用。本仓库不包含已经验收的离线模型安装包。
 
@@ -202,6 +202,8 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 API 容器启动时会执行迁移、创建只读数据库角色 `accounting_ro`（仅 SELECT，供 AI 查询），并写入基础角色、管理员和会计科目。票据文件保存在名为 `uploads` 的卷里。
 
+升级时沿用原来的目录和 Compose 项目名（包括已有的 `COMPOSE_PROJECT_NAME` 或 `-p` 参数），以便复用原来的数据库与 Redis 卷。安装脚本不会强制更换项目名；使用 `-p` 的已有部署可通过同名的 `COMPOSE_PROJECT_NAME` 运行脚本。若要同时运行独立的开发栈，请为开发栈另指定项目名，例如 `docker compose -p core-accounting-dev up -d db redis`。
+
 开发 Compose 的 `frontend` 服务仍然引用不存在的 `frontend/Dockerfile`，`docker compose --profile full up` 不是生产安装，也不是当前支持的本地开发方式。
 
 ### AI 与票据识别
@@ -241,6 +243,8 @@ git pull
 ./backups/backup.sh
 ./backups/backup.sh --restore backups/core_accounting_YYYYMMDD-HHMMSS.sql.gz
 ```
+
+备份与恢复默认使用数据库容器中的 `POSTGRES_USER` 和 `POSTGRES_DB`，因此也适用于 `.env` 中自定义的 `DB_USER` / `DB_NAME`；需要临时覆盖时，可在运行备份脚本时显式设置这两个变量。使用自定义 Compose 项目名的部署，备份时也要沿用同一个 `COMPOSE_PROJECT_NAME`。
 
 `docker compose -f docker-compose.prod.yml down` 会删掉容器，但保留数据库、Redis 和上传文件卷。`down -v` 会删掉这些卷，账套数据无法从卷里恢复。
 

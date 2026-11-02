@@ -21,10 +21,10 @@ _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 
 def ident(value: str, label: str) -> str:
-    """Return a safe unquoted SQL identifier or raise ValueError."""
+    """Validate and quote an identifier, preserving its configured case."""
     if not value or _IDENT.fullmatch(value) is None:
         raise ValueError(f"{label} must be a plain SQL identifier")
-    return value
+    return '"' + value + '"'
 
 
 def sql_literal(value: str) -> str:
@@ -35,7 +35,8 @@ def sql_literal(value: str) -> str:
 
 
 async def ensure() -> None:
-    user = ident(os.environ.get("DB_RO_USER", "accounting_ro"), "DB_RO_USER")
+    user_name = os.environ.get("DB_RO_USER", "accounting_ro")
+    user = ident(user_name, "DB_RO_USER")
     db_name = ident(os.environ.get("DB_NAME", "core_accounting"), "DB_NAME")
     password = os.environ.get("DB_RO_PASSWORD", "")
     if not password or "CHANGE_ME" in password or len(password) < 16:
@@ -50,7 +51,7 @@ async def ensure() -> None:
         async with engine.begin() as conn:
             exists = await conn.execute(
                 text("SELECT 1 FROM pg_roles WHERE rolname = :name"),
-                {"name": user},
+                {"name": user_name},
             )
             if exists.scalar() is None:
                 await conn.execute(
@@ -79,7 +80,7 @@ async def ensure() -> None:
             )
     finally:
         await engine.dispose()
-    print(f"Read-only role ensured: {user}")
+    print(f"Read-only role ensured: {user_name}")
 
 
 if __name__ == "__main__":

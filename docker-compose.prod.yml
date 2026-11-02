@@ -6,10 +6,9 @@
 # Manual (after copying .env.example to .env and replacing placeholders):
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
-# Project name is core-accounting-prod so volumes stay separate from the
-# dev stack in docker-compose.yml when both are used in this directory.
-
-name: core-accounting-prod
+# Keep Compose's existing project-name resolution (directory name, -p, or
+# COMPOSE_PROJECT_NAME) so upgrades reuse the original pgdata/redisdata volumes.
+# Run a separate development stack with an explicit, different project name.
 
 services:
   # ── PostgreSQL 15 (Production) ─────────────────────────
